@@ -125,7 +125,7 @@ final class ScreenshotDirector {
         int seen = 0;
         for (int i = entries.size() - 1; i >= 0; i--) {
             if (entries.get(i).event() instanceof TrafficEvent.DataTransferred data && data.payload().size() > 20
-                    && data.link().id().value() == 1 && seen++ == skip) {
+                    && model.openConnections().contains(data.link().id()) && seen++ == skip) {
                 for (Node node : scene.getRoot().lookupAll(".traffic-list")) {
                     ListView<TrafficEntry> list = (ListView<TrafficEntry>) node;
                     if (list.getItems() == entries) {
