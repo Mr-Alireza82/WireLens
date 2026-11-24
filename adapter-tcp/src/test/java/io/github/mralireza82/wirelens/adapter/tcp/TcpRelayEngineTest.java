@@ -253,15 +253,25 @@ class TcpRelayEngineTest {
         assertThat(roundTrip(relay)).isEqualTo("B");
     }
 
+    /**
+     * Binding to ::1 is not enough: some hosts (Windows firewall or security software) allow the bind
+     * but refuse the connect, so the probe performs a real round trip before the test relies on IPv6.
+     */
+    private static boolean ipv6LoopbackUsable() {
+        try (java.net.ServerSocket probe = new java.net.ServerSocket(0, 1, InetAddress.getByName("::1"));
+             Socket client = new Socket()) {
+            client.connect(probe.getLocalSocketAddress(), 2_000);
+            try (Socket accepted = probe.accept()) {
+                return accepted.isConnected();
+            }
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
     @Test
     void relaysOverIpv6WhenAvailable() throws Exception {
-        boolean ipv6;
-        try (java.net.ServerSocket probe = new java.net.ServerSocket(0, 1, InetAddress.getByName("::1"))) {
-            ipv6 = probe.isBound();
-        } catch (IOException e) {
-            ipv6 = false;
-        }
-        assumeThat(ipv6).as("IPv6 loopback available").isTrue();
+        assumeThat(ipv6LoopbackUsable()).as("IPv6 loopback can be bound and connected to").isTrue();
         TestServers.TransformServer server = new TestServers.TransformServer("::1", b -> b);
         toClose.add(server);
         RunningRelay relay = engine.start(ProxyConfiguration.of(new Endpoint(IpAddress.parse("::1"), new Port(0)),
