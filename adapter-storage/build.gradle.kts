@@ -5,4 +5,5 @@ plugins {
 
 dependencies {
     implementation(project(":application"))
+    implementation(libs.base.conversion)
 }

@@ -1,0 +1,146 @@
+/*
+ * WireLens styles on top of the AtlantaFX Primer theme. Colours come from the theme's variables
+ * (-color-*) so the light and dark themes both work; only the two side accents are WireLens' own.
+ */
+.root {
+    -wl-source: #2f81f7;
+    -wl-destination: #a371f7;
+}
+
+/* ------------------------------------------------------------------ header */
+.header {
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-color: transparent transparent -color-border-default transparent;
+    -fx-padding: 12 16 12 16;
+    -fx-spacing: 12;
+}
+.logo { -fx-icon-color: -wl-source; -fx-icon-size: 28px; }
+.app-title { -fx-font-size: 1.4em; -fx-font-weight: bold; }
+.app-subtitle { -fx-text-fill: -color-fg-muted; -fx-font-size: 0.9em; }
+.route { -fx-text-fill: -color-fg-muted; }
+.route-endpoint { -fx-font-weight: bold; }
+
+.status-pill {
+    -fx-background-radius: 999;
+    -fx-padding: 4 12 4 10;
+    -fx-font-weight: bold;
+    -fx-graphic-text-gap: 6;
+}
+.status-pill .ikonli-font-icon { -fx-icon-size: 10px; }
+.status-pill.running { -fx-background-color: -color-success-subtle; -fx-text-fill: -color-success-fg; }
+.status-pill.running .ikonli-font-icon { -fx-icon-color: -color-success-fg; }
+.status-pill.stopped { -fx-background-color: -color-neutral-subtle; -fx-text-fill: -color-fg-muted; }
+.status-pill.stopped .ikonli-font-icon { -fx-icon-color: -color-fg-muted; }
+.status-pill.busy { -fx-background-color: -color-warning-subtle; -fx-text-fill: -color-warning-fg; }
+.status-pill.busy .ikonli-font-icon { -fx-icon-color: -color-warning-fg; }
+.status-pill.failed { -fx-background-color: -color-danger-subtle; -fx-text-fill: -color-danger-fg; }
+.status-pill.failed .ikonli-font-icon { -fx-icon-color: -color-danger-fg; }
+
+.stat-tile {
+    -fx-background-color: -color-bg-default;
+    -fx-background-radius: 8;
+    -fx-border-color: -color-border-muted;
+    -fx-border-radius: 8;
+    -fx-padding: 8 12 8 12;
+    -fx-spacing: 2;
+}
+.stat-label { -fx-text-fill: -color-fg-muted; -fx-font-size: 0.82em; }
+.stat-value { -fx-font-size: 1.3em; -fx-font-weight: bold; }
+.stat-detail { -fx-text-fill: -color-fg-muted; -fx-font-size: 0.82em; }
+.legend-up { -fx-text-fill: -wl-source; -fx-font-size: 0.82em; -fx-font-weight: bold; }
+.legend-down { -fx-text-fill: -wl-destination; -fx-font-size: 0.82em; -fx-font-weight: bold; }
+.stat-tile.alert .stat-value { -fx-text-fill: -color-danger-fg; }
+
+/* ------------------------------------------------------------------ panels */
+.panel { -fx-padding: 10 12 8 12; -fx-spacing: 8; -fx-background-color: -color-bg-default; }
+.panel-accent { -fx-min-width: 4; -fx-pref-width: 4; -fx-max-width: 4; -fx-background-radius: 2; }
+.panel.source .panel-accent { -fx-background-color: -wl-source; }
+.panel.destination .panel-accent { -fx-background-color: -wl-destination; }
+.panel.source .panel-icon { -fx-icon-color: -wl-source; }
+.panel.destination .panel-icon { -fx-icon-color: -wl-destination; }
+.panel-icon { -fx-icon-size: 18px; }
+.panel-title { -fx-font-size: 1.15em; -fx-font-weight: bold; }
+.panel-subtitle { -fx-text-fill: -color-fg-muted; }
+.counter { -fx-text-fill: -color-fg-muted; -fx-font-size: 0.85em; }
+.field-label { -fx-text-fill: -color-fg-muted; }
+.field-error { -fx-text-fill: -color-danger-fg; -fx-font-size: 0.85em; }
+.hint { -fx-text-fill: -color-fg-subtle; -fx-font-size: 0.85em; }
+
+.traffic-list {
+    -fx-background-color: -color-bg-default;
+    -fx-border-color: -color-border-default;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+}
+.traffic-list .list-cell { -fx-padding: 0; }
+.traffic-list .list-cell:filled { -fx-border-color: transparent transparent -color-border-muted transparent; }
+.traffic-list .placeholder-text { -fx-text-fill: -color-fg-muted; }
+
+.entry { -fx-padding: 6 10 7 10; -fx-spacing: 3; }
+.entry-meta { -fx-spacing: 8; -fx-alignment: center-left; }
+.entry-number { -fx-text-fill: -color-fg-subtle; -fx-font-size: 0.8em; -fx-min-width: 36; }
+.entry-time { -fx-text-fill: -color-fg-muted; }
+.entry-connection { -fx-font-weight: bold; }
+.entry-peer { -fx-text-fill: -color-fg-muted; }
+.entry-size { -fx-font-weight: bold; }
+.entry-message { -fx-text-fill: -color-fg-default; }
+.entry-row { -fx-spacing: 8; -fx-alignment: top-left; }
+
+.badge {
+    -fx-background-radius: 4;
+    -fx-padding: 1 6 1 6;
+    -fx-font-size: 0.78em;
+    -fx-font-weight: bold;
+    -fx-graphic-text-gap: 4;
+}
+.badge .ikonli-font-icon { -fx-icon-size: 11px; }
+.badge.in { -fx-background-color: -color-success-subtle; -fx-text-fill: -color-success-fg; }
+.badge.in .ikonli-font-icon { -fx-icon-color: -color-success-fg; }
+.badge.out { -fx-background-color: -color-accent-subtle; -fx-text-fill: -color-accent-fg; }
+.badge.out .ikonli-font-icon { -fx-icon-color: -color-accent-fg; }
+.badge.typed { -fx-background-color: -color-warning-subtle; -fx-text-fill: -color-warning-fg; }
+.badge.typed .ikonli-font-icon { -fx-icon-color: -color-warning-fg; }
+.badge.opened { -fx-background-color: -color-success-muted; -fx-text-fill: -color-fg-default; }
+.badge.opened .ikonli-font-icon { -fx-icon-color: -color-fg-default; }
+.badge.ended, .badge.closed, .badge.notice { -fx-background-color: -color-neutral-subtle; -fx-text-fill: -color-fg-muted; }
+.badge.ended .ikonli-font-icon, .badge.closed .ikonli-font-icon, .badge.notice .ikonli-font-icon { -fx-icon-color: -color-fg-muted; }
+.badge.failed { -fx-background-color: -color-danger-subtle; -fx-text-fill: -color-danger-fg; }
+.badge.failed .ikonli-font-icon { -fx-icon-color: -color-danger-fg; }
+
+.repr-tag {
+    -fx-text-fill: -color-fg-subtle;
+    -fx-font-size: 0.72em;
+    -fx-font-weight: bold;
+    -fx-min-width: 34;
+    -fx-pref-width: 34;
+    -fx-padding: 2 0 0 0;
+}
+.payload-numbers { -fx-text-fill: -color-fg-default; }
+.payload-text { -fx-text-fill: -color-accent-fg; }
+.payload-more { -fx-text-fill: -color-fg-subtle; }
+
+.inspector { -fx-spacing: 6; }
+.inspector .text-area { -fx-background-radius: 6; }
+.inspector-title { -fx-font-weight: bold; }
+.composer { -fx-spacing: 6; -fx-alignment: center-left; }
+.status-line { -fx-text-fill: -color-fg-muted; -fx-font-size: 0.85em; }
+.status-line.paused { -fx-text-fill: -color-warning-fg; }
+
+/* ------------------------------------------------------------------ toast */
+.toast {
+    -fx-background-color: -color-bg-overlay;
+    -fx-background-radius: 8;
+    -fx-border-color: -color-border-default;
+    -fx-border-radius: 8;
+    -fx-padding: 10 16 10 14;
+    -fx-graphic-text-gap: 10;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.35), 16, 0.2, 0, 4);
+}
+.toast .ikonli-font-icon { -fx-icon-color: -color-success-fg; -fx-icon-size: 16px; }
+.toast.error .ikonli-font-icon { -fx-icon-color: -color-danger-fg; }
+
+/* ------------------------------------------------------------------ icons inside plain labels */
+.stat-label .ikonli-font-icon, .field-label .ikonli-font-icon, .hint .ikonli-font-icon { -fx-icon-color: -color-fg-muted; }
+.composer-target .ikonli-font-icon { -fx-icon-color: -color-fg-muted; }
+.menu-button.no-arrow > .arrow-button { -fx-padding: 0; }
+.menu-button.no-arrow > .arrow-button > .arrow { -fx-shape: null; -fx-padding: 0; }

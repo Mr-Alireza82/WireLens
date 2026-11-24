@@ -24,7 +24,11 @@ public record Endpoint(IpAddress address, Port port) {
         if (host.indexOf(':') >= 0 && !(host.startsWith("[") && host.endsWith("]"))) {
             throw new InvalidAddressException("Write IPv6 endpoints with brackets, e.g. [::1]:8583");
         }
-        return new Endpoint(IpAddress.parse(host), Port.of(Integer.parseInt(value.substring(colon + 1))));
+        String port = value.substring(colon + 1);
+        if (port.isEmpty() || port.length() > 5 || !port.chars().allMatch(Character::isDigit)) {
+            throw new InvalidAddressException("'" + port + "' is not a port number");
+        }
+        return new Endpoint(IpAddress.parse(host), Port.of(Integer.parseInt(port)));
     }
 
     /** {@code 10.0.0.1:8583} or, for IPv6, {@code [2001:db8::1]:8583}. */

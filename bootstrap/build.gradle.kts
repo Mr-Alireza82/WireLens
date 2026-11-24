@@ -20,5 +20,11 @@ dependencies {
 application {
     mainClass = "io.github.mralireza82.wirelens.bootstrap.WireLens"
     applicationName = "wirelens"
-    applicationDefaultJvmArgs = listOf("-Xmx768m")
+    applicationDefaultJvmArgs = listOf("-Xmx1g")
+}
+
+// ./gradlew :bootstrap:run --args="--demo" starts with simulated payment traffic.
+tasks.named<JavaExec>("run") {
+    systemProperties(System.getProperties().filterKeys { (it as String).startsWith("wirelens.") }
+        .mapKeys { it.key as String })
 }
