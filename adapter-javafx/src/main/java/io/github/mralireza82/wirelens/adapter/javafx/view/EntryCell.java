@@ -12,17 +12,18 @@ import javafx.scene.control.ListCell;
 import javafx.scene.control.OverrunStyle;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import org.kordamp.ikonli.javafx.FontIcon;
 
 /**
- * Renders one traffic entry as a compact card: metadata line, then the numbers and the decoded text, each with
- * a small tag (HEX / TEXT) so the representations are never confused. Previews are capped; the inspector shows
- * everything.
+ * Renders one traffic entry as a separate card: metadata line, then the numbers and the decoded text, each with
+ * a small tag (HEX / TEXT) so the representations are never confused. Both payload rows wrap over as many lines
+ * as the message needs; only very large payloads are capped here, and the inspector always shows everything.
  */
 final class EntryCell extends ListCell<TrafficEntry> {
-    static final int PREVIEW_NUMBER_BYTES = 48;
-    static final int PREVIEW_TEXT_BYTES = 160;
+    static final int PREVIEW_NUMBER_BYTES = 2048;
+    static final int PREVIEW_TEXT_BYTES = 2048;
 
     private final ObservableValue<RenderSettings> settings;
     private final PayloadRenderer renderer;
@@ -58,6 +59,8 @@ final class EntryCell extends ListCell<TrafficEntry> {
         for (Label payload : new Label[] {numbers, text, message}) {
             payload.setWrapText(true);
             payload.setMinWidth(0);
+            // Without this the cell keeps a one-line height and the label ellipsizes instead of wrapping.
+            payload.setMinHeight(Region.USE_PREF_SIZE);
             payload.setMaxWidth(Double.MAX_VALUE);
             HBox.setHgrow(payload, Priority.ALWAYS);
         }
@@ -71,7 +74,7 @@ final class EntryCell extends ListCell<TrafficEntry> {
         listViewProperty().addListener((obs, old, list) -> {
             card.prefWidthProperty().unbind();
             if (list != null) {
-                card.prefWidthProperty().bind(list.widthProperty().subtract(24));
+                card.prefWidthProperty().bind(list.widthProperty().subtract(36));
             }
         });
         setContextMenu(menu);
@@ -93,6 +96,7 @@ final class EntryCell extends ListCell<TrafficEntry> {
         badge.setText(kind.text());
         badge.setGraphic(new FontIcon(kind.icon()));
         badge.getStyleClass().setAll("label", "badge", kind.styleClass());
+        card.getStyleClass().setAll("entry", kind.styleClass());
         show(typed, EntryPresenter.isTyped(event));
         connection.setText(event.connectionId().map(Object::toString).orElse(""));
         peer.setText(EntryPresenter.peer(event));
