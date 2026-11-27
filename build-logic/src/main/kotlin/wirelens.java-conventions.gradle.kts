@@ -1,3 +1,5 @@
+import java.time.Duration
+
 // Shared Java setup for every module: Java 21 toolchain-free release flag, JUnit 5 and AssertJ.
 plugins {
     `java-library`
@@ -28,8 +30,13 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+    // A test that blocks (e.g. on a socket) fails with its name after 60 s instead of hanging the build;
+    // SEPARATE_THREAD lets JUnit abandon a thread stuck in non-interruptible I/O.
+    systemProperty("junit.jupiter.execution.timeout.default", "60 s")
+    systemProperty("junit.jupiter.execution.timeout.thread.mode.default", "SEPARATE_THREAD")
+    timeout.set(Duration.ofMinutes(10))
     testLogging {
-        events("failed")
+        events("failed", "skipped")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 }
