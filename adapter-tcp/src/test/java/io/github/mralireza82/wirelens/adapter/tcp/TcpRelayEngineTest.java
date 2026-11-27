@@ -136,7 +136,21 @@ class TcpRelayEngineTest {
                 client.shutdownOutput();
                 return null;
             });
-            byte[] echoed = client.getInputStream().readAllBytes();
+            Future<byte[]> read = writer.submit(() -> client.getInputStream().readAllBytes());
+            byte[] echoed;
+            try {
+                echoed = read.get(25, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (java.util.concurrent.TimeoutException stuck) {
+                // Seen intermittently on Windows with JDK 26 only: keep a dump (virtual threads included) to diagnose.
+                java.nio.file.Path dump = java.nio.file.Path.of("build", "reports", "tests", "large-transfer-threads.txt");
+                java.nio.file.Files.createDirectories(dump.getParent());
+                java.nio.file.Files.deleteIfExists(dump);
+                java.lang.management.ManagementFactory.getPlatformMXBean(
+                        com.sun.management.HotSpotDiagnosticMXBean.class).dumpThreads(dump.toAbsolutePath().toString(),
+                        com.sun.management.HotSpotDiagnosticMXBean.ThreadDumpFormat.TEXT_PLAIN);
+                throw new AssertionError("8 MB transfer stalled; open connections " + relay.openConnections()
+                        + ", events " + events.size() + ", thread dump in " + dump.toAbsolutePath(), stuck);
+            }
             write.get();
             assertThat(sha256(echoed)).isEqualTo(sha256(data));
         }
