@@ -130,7 +130,8 @@ class TcpRelayEngineTest {
         new Random(1).nextBytes(data);
 
         Socket client = connect(relay);
-        try (ExecutorService writer = Executors.newVirtualThreadPerTaskExecutor()) {
+        ExecutorService writer = Executors.newCachedThreadPool();
+        try {
             Future<?> write = writer.submit(() -> {
                 client.getOutputStream().write(data);
                 client.shutdownOutput();
@@ -141,7 +142,7 @@ class TcpRelayEngineTest {
             try {
                 echoed = read.get(25, java.util.concurrent.TimeUnit.SECONDS);
             } catch (java.util.concurrent.TimeoutException stuck) {
-                // Seen intermittently on Windows with JDK 26 only: keep a dump (virtual threads included) to diagnose.
+                // Seen on Windows with JDK 26 when the relay ran on virtual threads: keep a dump to diagnose.
                 java.nio.file.Path dump = java.nio.file.Path.of("build", "reports", "tests", "large-transfer-threads.txt");
                 java.nio.file.Files.createDirectories(dump.getParent());
                 java.nio.file.Files.deleteIfExists(dump);
@@ -153,6 +154,8 @@ class TcpRelayEngineTest {
             }
             write.get();
             assertThat(sha256(echoed)).isEqualTo(sha256(data));
+        } finally {
+            writer.shutdownNow(); // never wait for a stuck task: the assertion message must get out
         }
         TrafficEvent.ConnectionClosed closed = (TrafficEvent.ConnectionClosed) awaitEvent(
                 e -> e instanceof TrafficEvent.ConnectionClosed c && c.side() == Side.SOURCE);
@@ -169,7 +172,7 @@ class TcpRelayEngineTest {
         toClose.add(server);
         RunningRelay relay = startRelay(server.endpoint());
         int clients = 100;
-        try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
+        try (ExecutorService pool = Executors.newCachedThreadPool()) {
             List<Future<String>> replies = new ArrayList<>();
             for (int i = 0; i < clients; i++) {
                 String message = "client-" + i;

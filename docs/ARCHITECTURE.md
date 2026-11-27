@@ -67,7 +67,7 @@ numbers, hex dump, raw hex) is a pure function of `Payload` plus the view's `Ren
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant P as TcpRelay pump (virtual thread)
+    participant P as TcpRelay pump (thread)
     participant D as Destination
     participant S as CompositeEventSink
     participant St as TrafficStatistics
@@ -100,7 +100,7 @@ After a pump reads a chunk and publishes it as received, it calls `TrafficGate.a
 
 * With Hold off, `HoldService` answers `Forward` at once (one lock, no allocation beyond the decision).
 * With Hold on for that side, it records a `HeldMessage`, notifies the UI, and blocks the pump's
-  **virtual** thread on a `CompletableFuture<HoldDecision>`. Blocking a virtual thread is cheap, and it
+  thread on a `CompletableFuture<HoldDecision>`. Blocking that thread is cheap, and it
   gives exactly the right semantics: later bytes of the same connection and direction queue up behind
   the held one in the socket (TCP back-pressure), while every other connection and the opposite
   direction keep flowing.
@@ -114,8 +114,8 @@ After a pump reads a chunk and publishes it as received, it calls `TrafficGate.a
 
 | Thread | Work |
 |---|---|
-| Virtual thread: accept loop | `ServerSocket.accept()`, then hands the client to a `RelayedConnection`. |
-| 2 virtual threads per connection | One pump in each direction, using plain blocking streams. |
+| Accept-loop thread | `ServerSocket.accept()`, then hands the client to a `RelayedConnection`. |
+| 2 threads per connection | One pump in each direction, using plain blocking streams. Platform threads by default; `-Dwirelens.relay.threads=virtual` switches to virtual threads. |
 | Any thread → `TrafficEventSink` | Must not block. Statistics use `LongAdder`; the bridge appends to a `ConcurrentLinkedQueue`. |
 | FX application thread | `AnimationTimer` drains the bridge at most 15×/s, and a `Timeline` samples statistics every 500 ms. |
 | `wirelens-ui-tasks` (1 platform thread) | Blocking work requested by the UI: start/stop, export, import, send, saving settings. |
@@ -127,6 +127,14 @@ threads to their carrier while they block on I/O (Java 21).
 `ProxyService` changes its state machine under its monitor and notifies listeners only after releasing
 it. The UI's listener re-posts to the FX thread with `Platform.runLater`.
 
+
+**Why platform threads by default.** WireLens started on virtual threads. On Windows with JDK 26, a
+multi-megabyte burst through the relay sometimes stalled for good: a thread dump showed the relay's pump
+blocked writing to the client socket while the client was blocked reading from it, which is a missed
+wake-up in the JDK's virtual-thread socket support on that platform. Linux and JDK 21 were unaffected.
+Platform threads call the OS's blocking socket calls directly, so they can't hit that. An inspection proxy
+holds hundreds of connections, not hundreds of thousands, so the extra memory doesn't matter. The code
+didn't change: the same linear pump runs on either kind of thread.
 ## 6. Keeping memory and the UI under control
 
 A relay can move hundreds of megabytes per second, far more than a person can read. Three limits keep

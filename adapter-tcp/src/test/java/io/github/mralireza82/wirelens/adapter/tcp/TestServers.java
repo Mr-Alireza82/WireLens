@@ -26,12 +26,12 @@ final class TestServers {
 
         TransformServer(String host, UnaryOperator<byte[]> transform) throws IOException {
             server = new ServerSocket(0, 100, InetAddress.getByName(host));
-            Thread.ofVirtual().start(() -> {
+            Thread.ofPlatform().daemon().start(() -> {
                 while (!server.isClosed()) {
                     try {
                         Socket socket = server.accept();
                         accepted.add(socket);
-                        Thread.ofVirtual().start(() -> serve(socket, transform));
+                        Thread.ofPlatform().daemon().start(() -> serve(socket, transform));
                     } catch (IOException e) {
                         return;
                     }
@@ -76,7 +76,7 @@ final class TestServers {
 
         SinkServer() throws IOException {
             server = new ServerSocket(0, 10, InetAddress.getLoopbackAddress());
-            Thread.ofVirtual().start(() -> {
+            Thread.ofPlatform().daemon().start(() -> {
                 try (Socket socket = server.accept(); InputStream in = socket.getInputStream()) {
                     byte[] buffer = new byte[1024];
                     int count;

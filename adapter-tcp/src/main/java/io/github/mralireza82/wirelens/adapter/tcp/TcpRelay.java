@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -40,14 +41,14 @@ final class TcpRelay implements RunningRelay {
     private final TrafficEventSink sink;
     private final TrafficGate gate;
     private final Clock clock;
-    private final ExecutorService threads =
-            Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("wirelens-relay-", 0).factory());
+    private final ExecutorService threads;
     private final AtomicLong nextId = new AtomicLong();
     private final Map<ConnectionId, RelayedConnection> connections = new ConcurrentHashMap<>();
     private volatile boolean closing;
 
     TcpRelay(ServerSocket server, ProxyConfiguration configuration, TrafficEventSink sink, TrafficGate gate,
-             Clock clock) {
+             Clock clock, ThreadFactory threadFactory) {
+        this.threads = Executors.newThreadPerTaskExecutor(threadFactory);
         this.server = server;
         this.listeningOn = Sockets.toEndpoint(server.getLocalSocketAddress());
         this.destination = new AtomicReference<>(configuration.destination());

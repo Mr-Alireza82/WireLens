@@ -40,7 +40,7 @@ line-based text to raw binary frames.
 
 | | |
 |---|---|
-| **Real relay** | Forwards every client to the destination in both directions and passes half-closes on correctly. IPv4 and IPv6 are supported. Virtual threads let it handle thousands of connections. |
+| **Real relay** | Forwards every client to the destination in both directions and passes half-closes on correctly. IPv4 and IPv6 are supported. One simple blocking pump per direction, on platform threads (virtual threads are opt-in). |
 | **Two synchronised panels** | **Source** shows the client side and **Destination** shows the server side. One connection id (`#3`) ties both legs together. |
 | **Every event as its own entry** | Connected, received, sent, end of stream, closed (with reason, totals and duration), errors (listen, connect, read, write, send) and info messages. Each entry has a timestamp, addresses, ports, direction and byte count. |
 | **Raw bytes are the source of truth** | Bytes are stored once and never changed. Text, numbers and hex dumps are all derived from them when displayed. |
@@ -209,7 +209,7 @@ flowchart LR
 |---|---|
 | `domain` | `IpAddress`, `Port`, `Endpoint`, `Payload` and the sealed `TrafficEvent` hierarchy. Pure Java, with no dependencies. |
 | `application` | Use cases (`ProxyControl`, `ConnectionCommands`, `HoldCommands`), outbound ports (`RelayEngine`, `TrafficGate`, `OneShotSender`, `TrafficEventSink`, `CaptureExporter`, …), `ProxyService`, `HoldService`, statistics, filtering, and payload rendering and parsing. |
-| `adapter-tcp` | `TcpRelayEngine`: blocking sockets on virtual threads, two pumps per connection, half-close aware. Each chunk passes the `TrafficGate` before it is forwarded. `TcpOneShotSender` sends copies. |
+| `adapter-tcp` | `TcpRelayEngine`: blocking sockets, two pumps per connection (platform threads; virtual threads opt-in), half-close aware. Each chunk passes the `TrafficGate` before it is forwarded. `TcpOneShotSender` sends copies. |
 | `adapter-storage` | JSON Lines capture (export and import), the text report, raw `.bin` files, and Preferences-based settings. |
 | `adapter-javafx` | The UI as MVVM: view models are plain classes, testable without a screen, and views only bind. |
 | `bootstrap` | `main()`: creates every object and wires the adapters to the ports (manual dependency injection). It also contains demo mode. |
@@ -222,7 +222,7 @@ for the story behind the design.
 
 | | Choice | Why |
 |---|---|---|
-| Language | Java 21 (LTS) | Records, sealed types and pattern matching for a clear domain. Virtual threads for simple, scalable networking. |
+| Language | Java 21 (LTS) | Records, sealed types and pattern matching for a clear domain. Simple thread-per-direction networking. |
 | UI | JavaFX 21 + [AtlantaFX](https://github.com/mkpaz/atlantafx) + [Ikonli](https://kordamp.org/ikonli/) Feather icons | Virtualized lists, CSS theming, a modern look, and light and dark themes. |
 | Build | Gradle (Kotlin DSL), version catalog, `build-logic` convention plugin | Reproducible, modular, and familiar to Android developers. |
 | Base conversion | [`Mr-Alireza82/base-conversion`](https://github.com/Mr-Alireza82/base-conversion) via JitPack | Builds the per-byte digit tables and parses user input (`ByteEncoding`, `BaseConversion`). |
