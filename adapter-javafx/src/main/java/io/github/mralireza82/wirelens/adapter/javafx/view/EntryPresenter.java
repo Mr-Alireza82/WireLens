@@ -4,7 +4,6 @@ import io.github.mralireza82.wirelens.adapter.javafx.util.Formats;
 import io.github.mralireza82.wirelens.adapter.javafx.viewmodel.TrafficEntry;
 import io.github.mralireza82.wirelens.application.render.PayloadRenderer;
 import io.github.mralireza82.wirelens.application.render.RenderSettings;
-import io.github.mralireza82.wirelens.domain.traffic.DataOrigin;
 import io.github.mralireza82.wirelens.domain.traffic.Direction;
 import io.github.mralireza82.wirelens.domain.traffic.Side;
 import io.github.mralireza82.wirelens.domain.traffic.TrafficEvent;
@@ -34,7 +33,19 @@ final class EntryPresenter {
     }
 
     static boolean isTyped(TrafficEvent event) {
-        return event instanceof TrafficEvent.DataTransferred data && data.origin() == DataOrigin.INJECTED;
+        return !originTag(event).isEmpty();
+    }
+
+    /** "TYPED" for bytes the user sent, "EDITED" for held bytes the user changed; empty for relayed data. */
+    static String originTag(TrafficEvent event) {
+        if (!(event instanceof TrafficEvent.DataTransferred data)) {
+            return "";
+        }
+        return switch (data.origin()) {
+            case INJECTED -> "TYPED";
+            case EDITED -> "EDITED";
+            case RELAYED -> "";
+        };
     }
 
     /** "client", "destination". */
@@ -87,7 +98,7 @@ final class EntryPresenter {
         String size = event instanceof TrafficEvent.DataTransferred data ? " " + data.payload().size() + " B" : "";
         String peer = peer(event);
         return Formats.time(event.timestamp()) + " " + event.side() + " " + badge(event).text()
-                + (isTyped(event) ? " (typed)" : "") + connection + (peer.isEmpty() ? "" : " " + peer) + size;
+                + (isTyped(event) ? " (" + originTag(event).toLowerCase(java.util.Locale.ROOT) + ")" : "") + connection + (peer.isEmpty() ? "" : " " + peer) + size;
     }
 
     /** What "Copy entry" puts on the clipboard: headline plus numbers and text, or the message. */

@@ -17,6 +17,7 @@ import io.github.mralireza82.wirelens.domain.traffic.Link;
 import io.github.mralireza82.wirelens.domain.traffic.Payload;
 import io.github.mralireza82.wirelens.domain.traffic.Side;
 import io.github.mralireza82.wirelens.domain.traffic.TrafficEvent;
+import io.github.mralireza82.wirelens.application.intercept.HoldService;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -113,7 +114,9 @@ class MainViewModelTest {
             saved = value;
         }
     };
-    private final MainViewModel model = new MainViewModel(new AppDependencies(proxy, proxy, statistics, events,
+    private final HoldService hold = new HoldService(event -> { }, (target, payload, timeout) -> Payload.empty(),
+            Clock.systemUTC());
+    private final MainViewModel model = new MainViewModel(new AppDependencies(proxy, proxy, hold, statistics, events,
             List.of(exporter), importer, (payload, target) -> { }, settings, Clock.systemUTC()),
             Runnable::run, Runnable::run, (message, error) -> { });
 

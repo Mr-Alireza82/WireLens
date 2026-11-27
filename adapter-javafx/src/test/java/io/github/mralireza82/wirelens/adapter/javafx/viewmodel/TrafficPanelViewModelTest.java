@@ -14,6 +14,9 @@ import io.github.mralireza82.wirelens.domain.traffic.Side;
 import io.github.mralireza82.wirelens.domain.traffic.TrafficEvent;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableSet;
+import io.github.mralireza82.wirelens.application.intercept.HoldService;
+import java.time.Clock;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -51,7 +54,8 @@ class TrafficPanelViewModelTest {
         }
     };
     private final TrafficPanelViewModel panel = new TrafficPanelViewModel(Side.SOURCE,
-            new EndpointInput("127.0.0.1", "9000"), RenderSettings.DEFAULT, 1000, 10_000, commands, open,
+            new EndpointInput("127.0.0.1", "9000"), RenderSettings.DEFAULT, 1000, 10_000, commands,
+            new HoldService(event -> { }, (target, payload, timeout) -> Payload.empty(), Clock.systemUTC()), open,
             Runnable::run, Runnable::run, (message, error) -> notifications.add((error ? "ERR " : "") + message));
 
     private static TrafficEvent data(long id, Side side, String text) {
@@ -135,20 +139,38 @@ class TrafficPanelViewModelTest {
     }
 
     @Test
-    void sendsOnlyToASelectedOpenConnection() {
-        panel.accept(List.of(data(7, Side.SOURCE, "hi")));
+    void sendsOnlyToAnOpenTargetConnection() {
         panel.composerInput().set("02 41 03");
-        assertThat(panel.canSend().get()).isFalse(); // nothing selected
+        assertThat(panel.canSend().get()).isFalse(); // no target
 
-        panel.selected().set(panel.entries().getFirst());
+        ConnectionSummary seven = new ConnectionSummary(new ConnectionId(7), Endpoint.of("10.0.0.2", 5000),
+                Endpoint.of("127.0.0.1", 9000), Optional.empty(), Instant.now(), true);
+        panel.target().set(seven);
         assertThat(panel.canSend().get()).isFalse(); // connection not open
         open.add(new ConnectionId(7));
         assertThat(panel.composerTarget().get()).contains(new ConnectionId(7));
         assertThat(panel.canSend().get()).isTrue();
 
         panel.send();
-        assertThat(sent).containsExactly("#7 SOURCE \u0002A\u0003");
+        panel.disconnectTarget();
+        assertThat(sent).containsExactly("#7 SOURCE \u0002A\u0003", "disconnect #7");
         assertThat(notifications).containsExactly("Sent 3 bytes to the client of #7");
+    }
+
+    @Test
+    void sortsWithoutLosingTheFilter() {
+        panel.accept(List.of(data(1, Side.SOURCE, "aaaa"), data(2, Side.SOURCE, "b"), data(1, Side.SOURCE, "cc")));
+        panel.sortOrder().set(SortOrder.LARGEST_FIRST);
+        assertThat(panel.displayedEntries()).extracting(TrafficEntry::number).containsExactly(1L, 3L, 2L);
+        assertThat(panel.followLatest().get()).isFalse();
+        panel.sortOrder().set(SortOrder.BY_CONNECTION);
+        assertThat(panel.displayedEntries()).extracting(TrafficEntry::number).containsExactly(1L, 3L, 2L);
+        panel.sortOrder().set(SortOrder.NEWEST_FIRST);
+        panel.query().set("#1");
+        assertThat(panel.displayedEntries()).extracting(TrafficEntry::number).containsExactly(3L, 1L);
+        panel.sortOrder().set(SortOrder.LIVE);
+        assertThat(panel.displayedEntries()).extracting(TrafficEntry::number).containsExactly(1L, 3L);
+        assertThat(panel.followLatest().get()).isTrue();
     }
 
     @Test
@@ -163,9 +185,9 @@ class TrafficPanelViewModelTest {
 
     @Test
     void reportsSendFailures() {
-        panel.accept(List.of(data(13, Side.SOURCE, "x")));
         open.add(new ConnectionId(13));
-        panel.selected().set(panel.entries().getFirst());
+        panel.target().set(new ConnectionSummary(new ConnectionId(13), Endpoint.of("10.0.0.2", 5000),
+                Endpoint.of("127.0.0.1", 9000), Optional.empty(), Instant.now(), true));
         panel.composerMode().set(ComposerMode.TEXT);
         panel.composerInput().set("ping");
         panel.send();

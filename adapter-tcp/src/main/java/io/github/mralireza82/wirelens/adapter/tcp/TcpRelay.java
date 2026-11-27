@@ -2,6 +2,7 @@ package io.github.mralireza82.wirelens.adapter.tcp;
 
 import io.github.mralireza82.wirelens.application.port.out.RunningRelay;
 import io.github.mralireza82.wirelens.application.port.out.TrafficEventSink;
+import io.github.mralireza82.wirelens.application.port.out.TrafficGate;
 import io.github.mralireza82.wirelens.application.port.out.UnknownConnectionException;
 import io.github.mralireza82.wirelens.domain.net.Endpoint;
 import io.github.mralireza82.wirelens.domain.proxy.ProxyConfiguration;
@@ -37,6 +38,7 @@ final class TcpRelay implements RunningRelay {
     private final AtomicReference<Endpoint> destination;
     private final ProxyConfiguration configuration;
     private final TrafficEventSink sink;
+    private final TrafficGate gate;
     private final Clock clock;
     private final ExecutorService threads =
             Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("wirelens-relay-", 0).factory());
@@ -44,12 +46,14 @@ final class TcpRelay implements RunningRelay {
     private final Map<ConnectionId, RelayedConnection> connections = new ConcurrentHashMap<>();
     private volatile boolean closing;
 
-    TcpRelay(ServerSocket server, ProxyConfiguration configuration, TrafficEventSink sink, Clock clock) {
+    TcpRelay(ServerSocket server, ProxyConfiguration configuration, TrafficEventSink sink, TrafficGate gate,
+             Clock clock) {
         this.server = server;
         this.listeningOn = Sockets.toEndpoint(server.getLocalSocketAddress());
         this.destination = new AtomicReference<>(configuration.destination());
         this.configuration = configuration;
         this.sink = sink;
+        this.gate = gate;
         this.clock = clock;
     }
 
@@ -74,7 +78,7 @@ final class TcpRelay implements RunningRelay {
             }
             ConnectionId id = new ConnectionId(nextId.incrementAndGet());
             RelayedConnection connection = new RelayedConnection(id, client, destination.get(), configuration, sink,
-                    clock, threads, () -> connections.remove(id));
+                    gate, clock, threads, () -> connections.remove(id));
             connections.put(id, connection);
             try {
                 threads.execute(connection::run);

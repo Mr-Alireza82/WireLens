@@ -53,7 +53,10 @@ numbers, hex dump, raw hex) is a pure function of `Payload` plus the view's `Ren
 |---|---|---|
 | `ProxyControl` (start, stop, change destination, status) | inbound | `ProxyService` |
 | `ConnectionCommands` (send typed bytes, disconnect) | inbound | `ProxyService` |
+| `HoldCommands` (hold on/off, forward, edit, drop, send copy) | inbound | `HoldService` |
 | `RelayEngine` / `RunningRelay` | outbound | `TcpRelayEngine` / `TcpRelay` |
+| `TrafficGate` (asked before each chunk is forwarded) | outbound, implemented by the core | `HoldService` (or `TrafficGate.OPEN`) |
+| `OneShotSender` (send a copy, collect the reply) | outbound | `TcpOneShotSender` |
 | `TrafficEventSink` | outbound (Observer) | `TrafficStatistics`, `FxEventBridge`, composed by `CompositeEventSink` |
 | `CaptureExporter` / `CaptureImporter` | outbound | `JsonLinesCapture`, `TextReportExporter` |
 | `PayloadFileWriter` | outbound | `RawPayloadWriter` |
@@ -89,6 +92,23 @@ sequenceDiagram
   receive their answer.
 * The first cause wins as the close reason: a peer closing, an error, the user disconnecting, or the
   proxy stopping. Once teardown starts, the socket errors it triggers are expected and are not reported.
+
+### Hold mode
+
+Holding is an application concern, so the TCP adapter only knows one question: *may I forward this?*
+After a pump reads a chunk and publishes it as received, it calls `TrafficGate.admit(link, payload)`.
+
+* With Hold off, `HoldService` answers `Forward` at once (one lock, no allocation beyond the decision).
+* With Hold on for that side, it records a `HeldMessage`, notifies the UI, and blocks the pump's
+  **virtual** thread on a `CompletableFuture<HoldDecision>`. Blocking a virtual thread is cheap, and it
+  gives exactly the right semantics: later bytes of the same connection and direction queue up behind
+  the held one in the socket (TCP back-pressure), while every other connection and the opposite
+  direction keep flowing.
+* The user's decision completes the future: `Forward(payload, edited)` or `Drop`. Edited bytes are
+  written with `DataOrigin.EDITED`, so captures and exports show what was changed.
+* When a connection ends, the relay calls `TrafficGate.release(id)`, which completes anything still held
+  for it with `Drop`, so no thread is ever left waiting on a dead connection. Turning Hold off forwards
+  whatever is waiting.
 
 ## 5. Threading model
 
@@ -145,7 +165,8 @@ data events per second, a flat heap, and worst frame gaps similar to an idle win
 | Value object | `IpAddress`, `Endpoint`, `Payload`, `RenderSettings`, `StatisticsSnapshot`, … |
 | Observer | `TrafficEventSink`, status listeners, JavaFX properties |
 | Composite | `CompositeEventSink` (fan-out with isolation of failing subscribers) |
-| Facade / application service | `ProxyService` |
+| Facade / application service | `ProxyService`, `HoldService` |
+| Gate / interceptor (with futures as the rendezvous) | `TrafficGate`, `HoldService`, `HoldDecision` (sealed) |
 | State machine | `ProxyState` transitions in `ProxyService` |
 | Strategy | `TextEncoding` (decoding), `Radix`, exporters behind `CaptureExporter` |
 | Specification | `TrafficFilter` (a `Predicate<TrafficEvent>`) |

@@ -2,6 +2,7 @@ package io.github.mralireza82.wirelens.adapter.tcp;
 
 import io.github.mralireza82.wirelens.application.port.out.RelayEngine;
 import io.github.mralireza82.wirelens.application.port.out.RunningRelay;
+import io.github.mralireza82.wirelens.application.port.out.TrafficGate;
 import io.github.mralireza82.wirelens.application.port.out.TrafficEventSink;
 import io.github.mralireza82.wirelens.domain.proxy.ProxyConfiguration;
 
@@ -22,9 +23,17 @@ public final class TcpRelayEngine implements RelayEngine {
     private static final int BACKLOG = 256;
 
     private final Clock clock;
+    private final TrafficGate gate;
 
+    /** An engine that forwards everything immediately. */
     public TcpRelayEngine(Clock clock) {
+        this(clock, TrafficGate.OPEN);
+    }
+
+    /** @param gate consulted before each received chunk is forwarded (hold mode) */
+    public TcpRelayEngine(Clock clock, TrafficGate gate) {
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.gate = Objects.requireNonNull(gate, "gate");
     }
 
     @Override
@@ -37,7 +46,7 @@ public final class TcpRelayEngine implements RelayEngine {
             server.close();
             throw e;
         }
-        TcpRelay relay = new TcpRelay(server, configuration, sink, clock);
+        TcpRelay relay = new TcpRelay(server, configuration, sink, gate, clock);
         relay.startAccepting();
         return relay;
     }

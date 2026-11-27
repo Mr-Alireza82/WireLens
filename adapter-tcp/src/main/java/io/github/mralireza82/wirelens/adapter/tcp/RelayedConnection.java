@@ -1,6 +1,8 @@
 package io.github.mralireza82.wirelens.adapter.tcp;
 
 import io.github.mralireza82.wirelens.application.port.out.TrafficEventSink;
+import io.github.mralireza82.wirelens.application.port.out.TrafficGate;
+import io.github.mralireza82.wirelens.domain.intercept.HoldDecision;
 import io.github.mralireza82.wirelens.application.port.out.UnknownConnectionException;
 import io.github.mralireza82.wirelens.domain.net.Endpoint;
 import io.github.mralireza82.wirelens.domain.proxy.ProxyConfiguration;
@@ -40,6 +42,7 @@ final class RelayedConnection {
     private final Endpoint destination;
     private final ProxyConfiguration configuration;
     private final TrafficEventSink sink;
+    private final TrafficGate gate;
     private final Clock clock;
     private final ExecutorService threads;
     private final Runnable onFinished;
@@ -53,12 +56,14 @@ final class RelayedConnection {
     private volatile Socket pendingUpstream;
 
     RelayedConnection(ConnectionId id, Socket clientSocket, Endpoint destination, ProxyConfiguration configuration,
-                      TrafficEventSink sink, Clock clock, ExecutorService threads, Runnable onFinished) {
+                      TrafficEventSink sink, TrafficGate gate, Clock clock, ExecutorService threads,
+                      Runnable onFinished) {
         this.id = id;
         this.clientSocket = clientSocket;
         this.destination = destination;
         this.configuration = configuration;
         this.sink = sink;
+        this.gate = gate;
         this.clock = clock;
         this.threads = threads;
         this.onFinished = onFinished;
@@ -113,7 +118,10 @@ final class RelayedConnection {
         }
     }
 
-    /** Copies bytes from one leg to the other until end of stream or failure. */
+    /**
+     * Copies bytes from one leg to the other until end of stream or failure. Each chunk passes the gate first, which
+     * may hold it (blocking only this direction of this connection) until the user forwards, edits or drops it.
+     */
     private void pump(Leg from, Leg to) {
         byte[] buffer = new byte[configuration.bufferSize()];
         while (true) {
@@ -139,8 +147,21 @@ final class RelayedConnection {
             Payload payload = Payload.copyOf(buffer, 0, count);
             sink.publish(new TrafficEvent.DataTransferred(clock.instant(), from.link(), Direction.INBOUND, payload,
                     DataOrigin.RELAYED));
+            HoldDecision decision;
             try {
-                to.write(payload, DataOrigin.RELAYED, sink, clock);
+                decision = gate.admit(from.link(), payload);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            if (!(decision instanceof HoldDecision.Forward forward)) {
+                continue;
+            }
+            if (tearingDown.get()) {
+                return;
+            }
+            try {
+                to.write(forward.payload(), forward.edited() ? DataOrigin.EDITED : DataOrigin.RELAYED, sink, clock);
             } catch (IOException e) {
                 fail(to.link().side(), FailureStage.WRITE, e);
                 return;
@@ -185,6 +206,7 @@ final class RelayedConnection {
     }
 
     private void closeSockets() {
+        gate.release(id);
         TcpRelay.closeQuietly(pendingUpstream);
         Leg s = source;
         Leg t = target;

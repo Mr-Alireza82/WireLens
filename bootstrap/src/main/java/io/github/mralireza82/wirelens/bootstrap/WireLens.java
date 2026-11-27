@@ -6,7 +6,9 @@ import io.github.mralireza82.wirelens.adapter.storage.JsonLinesCapture;
 import io.github.mralireza82.wirelens.adapter.storage.PreferencesSettingsRepository;
 import io.github.mralireza82.wirelens.adapter.storage.RawPayloadWriter;
 import io.github.mralireza82.wirelens.adapter.storage.TextReportExporter;
+import io.github.mralireza82.wirelens.adapter.tcp.TcpOneShotSender;
 import io.github.mralireza82.wirelens.adapter.tcp.TcpRelayEngine;
+import io.github.mralireza82.wirelens.application.intercept.HoldService;
 import io.github.mralireza82.wirelens.application.event.CompositeEventSink;
 import io.github.mralireza82.wirelens.application.port.out.SettingsRepository;
 import io.github.mralireza82.wirelens.application.proxy.ProxyService;
@@ -14,6 +16,7 @@ import io.github.mralireza82.wirelens.application.render.TextEncoding;
 import io.github.mralireza82.wirelens.application.statistics.TrafficStatistics;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 
@@ -36,13 +39,14 @@ public final class WireLens {
         Clock clock = Clock.systemDefaultZone();
         TrafficStatistics statistics = new TrafficStatistics(clock);
         CompositeEventSink events = new CompositeEventSink(statistics);
-        ProxyService proxy = new ProxyService(new TcpRelayEngine(clock), events, clock);
+        HoldService hold = new HoldService(events, new TcpOneShotSender(Duration.ofSeconds(5)), clock);
+        ProxyService proxy = new ProxyService(new TcpRelayEngine(clock, hold), events, clock);
         JsonLinesCapture capture = new JsonLinesCapture();
 
         DemoTraffic demoTraffic = demo ? DemoTraffic.prepare() : null;
         SettingsRepository settings = demo ? demoTraffic.settings() : PreferencesSettingsRepository.forCurrentUser();
 
-        AppDependencies dependencies = new AppDependencies(proxy, proxy, statistics, events,
+        AppDependencies dependencies = new AppDependencies(proxy, proxy, hold, statistics, events,
                 List.of(capture, new TextReportExporter(TextEncoding.ASCII)), capture, new RawPayloadWriter(),
                 settings, clock);
         if (demoTraffic != null) {

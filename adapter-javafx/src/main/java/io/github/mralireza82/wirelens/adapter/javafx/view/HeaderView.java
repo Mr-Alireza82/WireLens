@@ -15,6 +15,7 @@ import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.Tooltip;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
@@ -42,7 +43,10 @@ final class HeaderView extends VBox {
     }
 
     private HBox titleRow(Runnable openCapture, Runnable exportAll, Runnable showAbout) {
-        FontIcon logo = new FontIcon(Feather.APERTURE);
+        ImageView logo = new ImageView(AppIcon.draw(80));
+        logo.setFitWidth(40);
+        logo.setFitHeight(40);
+        logo.setSmooth(true);
         logo.getStyleClass().add("logo");
         Label title = new Label("WireLens");
         title.getStyleClass().add("app-title");
@@ -98,6 +102,12 @@ final class HeaderView extends VBox {
 
     private HBox tilesRow() {
         StatTile connections = new StatTile("Connections", icon(Feather.LINK));
+        connections.caption.setContentDisplay(javafx.scene.control.ContentDisplay.LEFT);
+        connections.caption.setText("Connections ▾");
+        connections.getStyleClass().add("clickable");
+        Tooltip.install(connections, new Tooltip("Show open connections: client → proxy → destination"));
+        connections.setOnMouseClicked(event -> ConnectionPicker.showReadOnly(connections.caption,
+                model.activeConnections(), model.clock()));
         StatTile upstream = new StatTile("Client → Destination", icon(Feather.ARROW_UP_RIGHT));
         StatTile downstream = new StatTile("Destination → Client", icon(Feather.ARROW_DOWN_LEFT));
         StatTile totals = new StatTile("Received / Sent", icon(Feather.BAR_CHART_2));

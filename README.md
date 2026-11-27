@@ -1,8 +1,12 @@
 <div align="center">
 
+<img src="docs/images/logo.svg" width="96" alt="WireLens logo">
+
 # WireLens
 
 **A TCP relay and traffic inspector with a modern JavaFX interface.**
+
+*A lens on the wire: the bytes between your client and server, made visible.*
 
 Put WireLens between a client and a server, and see every connection, every byte and every event,
 in text and in binary, octal, decimal or hex. Nothing is lost along the way.
@@ -43,11 +47,13 @@ line-based text to raw binary frames.
 | **Independent view selectors per panel** | Encoding (ASCII, UTF-8, ISO-8859-1, EBCDIC IBM037, UTF-16BE), base (BIN / OCT / DEC / HEX) and separator (space, none, `-`, `:`, `,`, or your own). A change re-renders all entries instantly. |
 | **Inspector** | Shows the selected entry in full: numbers (with bytes per line), decoded text, a classic hex dump, and all metadata. Every view is read-only, selectable and copyable. |
 | **Copy anything** | Copy the numbers, the decoded text, the canonical raw hex (`008E`) or whole entries (`Ctrl+C`), or save the exact bytes to a `.bin` file. |
-| **Send box** | Type bytes (`02 00 8E 03`) or text with escapes (`PING\r\n`, `\x02`) and send them to the client or to the destination of a live connection. Sent bytes are marked **TYPED**. |
+| **Hold mode (intercept)** | Turn on **Hold** in a panel and every message from that side stops at the proxy. Then **Forward** it, **Edit & forward** (bytes or text), **Drop** it, or **Send a copy** to another address and see the reply. **Forward all** and **Drop all** are there too. Order per connection is kept, and other connections keep flowing. |
+| **Connection-first sending** | Pick the target connection from a searchable list (`client → proxy → destination`), then **Send** or **Disconnect**. There's no need to find an event first. A closed target stays visible, greyed out, until you choose another. |
+| **Send box** | Type bytes (`02 00 8E 03`) or text with escapes (`PING\r\n`, `\x02`) and send them to the client or to the destination. Sent bytes are marked **TYPED**, and edited held bytes are marked **EDITED**. |
 | **Find things fast** | Search text, hex byte sequences (aligned to byte boundaries), `#connection` or addresses. Filter by event kind. Show a single connection. |
-| **Capture control** | Pause and resume per panel (traffic keeps flowing, and the panel counts what it skipped). Follow the newest entries, clear panels, and reset statistics. |
+| **Capture control** | Pause and resume per panel (traffic keeps flowing, and the panel counts what it skipped). Sort by **Live** (follows new entries), newest, oldest, largest, smallest, by connection, received first or sent first. Clear panels and reset statistics. |
 | **Export and reopen** | Export to *WireLens JSON Lines* (lossless, so you can open it again later) or to a text report with hex dumps for tickets. |
-| **Live header** | Status, route, active / total / peak connections, bytes in each direction, received / sent totals, errors, uptime, and a one-minute throughput chart. |
+| **Live header** | Status, route, active / total / peak connections (click for the searchable list of open connections), bytes in each direction, received / sent totals, errors, uptime, and a one-minute throughput chart. |
 | **Strict address input** | IPv4 and IPv6 are checked on every keystroke with clear messages (`300 is out of range`, `'::' may appear only once`). Invalid endpoints cannot be submitted. |
 | **Made for heavy traffic** | Events are batched onto the UI thread at most 15 times a second. History is limited both by entry count and by bytes, and an overload is reported instead of crashing the app. |
 | **Light and dark themes** | Uses AtlantaFX Primer, remembers your settings, and has keyboard shortcuts. |
@@ -121,10 +127,31 @@ These were deliberate design decisions:
   inspector's Details tab). This lets you reproduce the original view without storing a second copy of
   the payload as text.
 
+### Hold mode: stop, edit, forward
+
+Press **Hold** in the **Source** panel to stop messages from clients, or in the **Destination** panel
+to stop replies from the server. While Hold is on:
+
+* Each message waits in the yellow **held** queue above the list, oldest first.
+* **Forward** sends it on unchanged. **Edit & forward…** opens it as bytes (in the panel's base) or as
+  text with escapes, and sends your version, which is marked **EDITED**. **Drop** discards it.
+* **Send copy to…** opens a new, short-lived connection to any address, sends the bytes (edited if you
+  like) and shows the reply in the panel. The original message stays held.
+* A held message only delays later bytes of **the same connection in the same direction**. Other
+  connections, and the other direction, keep flowing.
+* Turning Hold off forwards everything still waiting, and closing a connection discards what it held.
+
+![Hold mode](docs/images/wirelens-hold.png)
+
 ### Sending bytes
 
-Select an entry of an open connection. The send box then targets that connection's client (source
-panel) or destination (destination panel).
+Choose the target in **Send to the client of** (source panel) or **Send to the destination of**
+(destination panel). The picker lists open connections as `client → proxy → destination`, with a search
+box first (`#3`, an IP or a port). If there is only one connection, it is picked for you. **Disconnect**
+next to it closes the target. If the target closes, it stays shown as *closed* and Send is disabled
+until you pick another one. You can also right-click an entry and choose **Send to this connection**.
+
+![Choosing a connection](docs/images/wirelens-picker.png)
 
 | Mode | You type | Bytes sent |
 |---|---|---|
@@ -181,8 +208,8 @@ flowchart LR
 | Module | Responsibility |
 |---|---|
 | `domain` | `IpAddress`, `Port`, `Endpoint`, `Payload` and the sealed `TrafficEvent` hierarchy. Pure Java, with no dependencies. |
-| `application` | Use cases (`ProxyControl`, `ConnectionCommands`), outbound ports (`RelayEngine`, `TrafficEventSink`, `CaptureExporter`, …), `ProxyService`, statistics, filtering, and payload rendering and parsing. |
-| `adapter-tcp` | `TcpRelayEngine`: blocking sockets on virtual threads, two pumps per connection, half-close aware. |
+| `application` | Use cases (`ProxyControl`, `ConnectionCommands`, `HoldCommands`), outbound ports (`RelayEngine`, `TrafficGate`, `OneShotSender`, `TrafficEventSink`, `CaptureExporter`, …), `ProxyService`, `HoldService`, statistics, filtering, and payload rendering and parsing. |
+| `adapter-tcp` | `TcpRelayEngine`: blocking sockets on virtual threads, two pumps per connection, half-close aware. Each chunk passes the `TrafficGate` before it is forwarded. `TcpOneShotSender` sends copies. |
 | `adapter-storage` | JSON Lines capture (export and import), the text report, raw `.bin` files, and Preferences-based settings. |
 | `adapter-javafx` | The UI as MVVM: view models are plain classes, testable without a screen, and views only bind. |
 | `bootstrap` | `main()`: creates every object and wires the adapters to the ports (manual dependency injection). It also contains demo mode. |
@@ -219,7 +246,7 @@ Gradle then substitutes the dependency with the local project (a composite build
 ./gradlew test
 ```
 
-There are 144 tests across all modules:
+There are 158 tests across all modules:
 
 * **Domain**: IPv4 and IPv6 parsing and canonical form (RFC 5952), checked against the JDK. Ports,
   endpoints, and payload immutability.
@@ -228,7 +255,8 @@ There are 144 tests across all modules:
 * **TCP adapter (real sockets)**: request and response with half-close, an unreachable destination, an
   8 MB byte-exact transfer (SHA-256), 100 concurrent clients, sending typed bytes to either side,
   disconnect, stop, re-targeting, IPv6 (skipped where `::1` is not available), and a port that is
-  already in use.
+  already in use. Hold mode end to end: forward, edit, drop, holding replies, releasing on disconnect,
+  turning Hold off, and sending a copy elsewhere.
 * **Storage**: a lossless JSON Lines round trip for every event kind, corrupt-file errors, and settings
   persistence.
 * **UI view models** (no screen needed): history and byte limits, pause, filters, endpoint validation,

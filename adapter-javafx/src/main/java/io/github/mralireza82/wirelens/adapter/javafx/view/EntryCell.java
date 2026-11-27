@@ -97,6 +97,11 @@ final class EntryCell extends ListCell<TrafficEntry> {
         badge.setGraphic(new FontIcon(kind.icon()));
         badge.getStyleClass().setAll("label", "badge", kind.styleClass());
         card.getStyleClass().setAll("entry", kind.styleClass());
+        typed.setText(EntryPresenter.originTag(event));
+        typed.getStyleClass().remove("edited");
+        if ("EDITED".equals(typed.getText())) {
+            typed.getStyleClass().add("edited");
+        }
         show(typed, EntryPresenter.isTyped(event));
         connection.setText(event.connectionId().map(Object::toString).orElse(""));
         peer.setText(EntryPresenter.peer(event));

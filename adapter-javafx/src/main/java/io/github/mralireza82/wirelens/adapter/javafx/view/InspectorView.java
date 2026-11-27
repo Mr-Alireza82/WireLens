@@ -158,7 +158,7 @@ final class InspectorView extends VBox {
         row(text, "Entry", "#" + entry.number());
         row(text, "Time", Formats.dateTime(event.timestamp()));
         row(text, "Side", event.side() + " (" + EntryPresenter.peerName(event.side()) + " leg)");
-        row(text, "Event", EntryPresenter.badge(event).text() + (EntryPresenter.isTyped(event) ? " (typed by you)" : ""));
+        row(text, "Event", EntryPresenter.badge(event).text() + (EntryPresenter.isTyped(event) ? " (" + EntryPresenter.originTag(event).toLowerCase(java.util.Locale.ROOT) + " by you)" : ""));
         event.connectionId().ifPresent(id -> row(text, "Connection", id.toString()));
         if (event instanceof TrafficEvent.OnLink onLink) {
             row(text, "Proxy end", onLink.link().local().toString());

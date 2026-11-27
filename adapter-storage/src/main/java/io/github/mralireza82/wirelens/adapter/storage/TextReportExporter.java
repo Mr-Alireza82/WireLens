@@ -60,7 +60,11 @@ public final class TextReportExporter implements CaptureExporter {
         String detail = switch (event) {
             case TrafficEvent.ConnectionOpened ignored -> "connection opened";
             case TrafficEvent.DataTransferred data -> (data.direction().name().equals("INBOUND") ? "received " : "sent ")
-                    + data.payload().size() + " bytes" + (data.origin().name().equals("INJECTED") ? " (typed by user)" : "");
+                    + data.payload().size() + " bytes" + switch (data.origin()) {
+                        case INJECTED -> " (typed by user)";
+                        case EDITED -> " (edited by user)";
+                        case RELAYED -> "";
+                    };
             case TrafficEvent.StreamEnded ended -> "end of stream " + ended.direction().name().toLowerCase();
             case TrafficEvent.ConnectionClosed closed -> "closed (" + closed.reason() + "), in " + closed.bytesIn()
                     + " B, out " + closed.bytesOut() + " B";

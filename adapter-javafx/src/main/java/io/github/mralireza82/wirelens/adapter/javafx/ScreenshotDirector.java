@@ -87,6 +87,18 @@ final class ScreenshotDirector {
         });
         steps.add(() -> select(model.source(), 0));
         steps.add(() -> save("wirelens-dark.png"));
+        steps.add(() -> model.source().holding().set(true));
+        steps.add(() -> { });
+        steps.add(() -> { });
+        steps.add(() -> save("wirelens-hold.png"));
+        steps.add(() -> {
+            for (Node node : scene.getRoot().lookupAll(".connection-picker")) {
+                ((javafx.scene.control.Button) node).fire();
+                break;
+            }
+        });
+        steps.add(() -> savePopup("wirelens-picker.png"));
+        steps.add(() -> model.source().holding().set(false));
         steps.add(() -> {
             model.destination().settings().set(model.destination().settings().get()
                     .withRadix(io.github.mralireza82.wirelens.application.render.Radix.BINARY).withBytesPerLine(8));
@@ -121,7 +133,7 @@ final class ScreenshotDirector {
     @SuppressWarnings("unchecked")
     private void select(TrafficPanelViewModel panel, int skip) {
         panel.followLatest().set(false);
-        List<TrafficEntry> entries = panel.visibleEntries();
+        List<TrafficEntry> entries = panel.displayedEntries();
         int seen = 0;
         for (int i = entries.size() - 1; i >= 0; i--) {
             if (entries.get(i).event() instanceof TrafficEvent.DataTransferred data && data.payload().size() > 20
@@ -138,8 +150,39 @@ final class ScreenshotDirector {
         }
     }
 
+    /** Saves the window with the open popover drawn on top of it at its on-screen position. */
+    private void savePopup(String name) {
+        WritableImage base = scene.snapshot(null);
+        for (javafx.stage.Window window : javafx.stage.Window.getWindows()) {
+            if (window instanceof javafx.stage.PopupWindow popup && popup.isShowing()) {
+                javafx.scene.SnapshotParameters clear = new javafx.scene.SnapshotParameters();
+                clear.setFill(javafx.scene.paint.Color.TRANSPARENT);
+                WritableImage over = popup.getScene().getRoot().snapshot(clear, null);
+                int dx = (int) (popup.getX() - scene.getWindow().getX() - scene.getX());
+                int dy = (int) (popup.getY() - scene.getWindow().getY() - scene.getY());
+                javafx.scene.image.PixelWriter writer = base.getPixelWriter();
+                PixelReader reader = over.getPixelReader();
+                for (int y = 0; y < (int) over.getHeight(); y++) {
+                    for (int x = 0; x < (int) over.getWidth(); x++) {
+                        int tx = x + dx;
+                        int ty = y + dy;
+                        int argb = reader.getArgb(x, y);
+                        if ((argb >>> 24) > 0 && tx >= 0 && ty >= 0 && tx < base.getWidth() && ty < base.getHeight()) {
+                            writer.setArgb(tx, ty, argb);
+                        }
+                    }
+                }
+                popup.hide();
+            }
+        }
+        write(base, name);
+    }
+
     private void save(String name) {
-        WritableImage image = scene.snapshot(null);
+        write(scene.snapshot(null), name);
+    }
+
+    private void write(WritableImage image, String name) {
         int width = (int) image.getWidth();
         int height = (int) image.getHeight();
         BufferedImage buffered = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);

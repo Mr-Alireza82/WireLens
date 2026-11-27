@@ -8,6 +8,7 @@ import io.github.mralireza82.wirelens.adapter.javafx.util.Formats;
 import io.github.mralireza82.wirelens.adapter.javafx.viewmodel.ComposerMode;
 import io.github.mralireza82.wirelens.adapter.javafx.viewmodel.EndpointInput;
 import io.github.mralireza82.wirelens.adapter.javafx.viewmodel.MainViewModel;
+import io.github.mralireza82.wirelens.adapter.javafx.viewmodel.SortOrder;
 import io.github.mralireza82.wirelens.adapter.javafx.viewmodel.TrafficEntry;
 import io.github.mralireza82.wirelens.adapter.javafx.viewmodel.TrafficPanelViewModel;
 import io.github.mralireza82.wirelens.application.port.out.CaptureExporter;
@@ -33,6 +34,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.RadioMenuItem;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.SplitPane;
@@ -286,7 +288,7 @@ public final class TrafficPanelView extends VBox {
 
     private Node filterBar() {
         CustomTextField search = new CustomTextField();
-        search.setPromptText("Search text, hex bytes, #connection or address");
+        search.setPromptText("Search bytes, text, #id or address");
         search.setLeft(new FontIcon(Feather.SEARCH));
         Button clearSearch = new Button(null, new FontIcon(Feather.X));
         clearSearch.getStyleClass().addAll(Styles.BUTTON_ICON, Styles.FLAT, Styles.SMALL);
@@ -337,10 +339,15 @@ public final class TrafficPanelView extends VBox {
                 () -> new FontIcon(model.paused().get() ? Feather.PLAY : Feather.PAUSE), model.paused()));
         pause.setTooltip(new Tooltip("Pause / resume capturing in this panel (traffic keeps flowing)"));
 
-        ToggleButton follow = new ToggleButton(null, new FontIcon(Feather.CHEVRONS_DOWN));
-        follow.getStyleClass().add(Styles.BUTTON_ICON);
-        follow.selectedProperty().bindBidirectional(model.followLatest());
-        follow.setTooltip(new Tooltip("Follow the newest entries"));
+        ToggleButton hold = new ToggleButton("Hold", new FontIcon(Feather.OCTAGON));
+        hold.getStyleClass().add("hold-toggle");
+        hold.setMinWidth(ToggleButton.USE_PREF_SIZE);
+        hold.selectedProperty().bindBidirectional(model.holding());
+        hold.setTooltip(new Tooltip(model.side() == Side.SOURCE
+                ? "Hold messages from clients until you forward, edit or drop them"
+                : "Hold replies from the destination until you forward, edit or drop them"));
+
+        MenuButton sort = sortMenu();
 
         Button clear = new Button(null, new FontIcon(Feather.TRASH_2));
         clear.getStyleClass().add(Styles.BUTTON_ICON);
@@ -356,13 +363,49 @@ public final class TrafficPanelView extends VBox {
             export.getItems().add(item);
         }
 
-        HBox bar = new HBox(6, search, kinds, pause, follow, clear, export);
+        HBox bar = new HBox(6, search, kinds, sort, pause, hold, clear, export);
         bar.setAlignment(Pos.CENTER_LEFT);
         return bar;
     }
 
+    private MenuButton sortMenu() {
+        MenuButton sort = new MenuButton();
+        sort.getStyleClass().addAll(Styles.BUTTON_ICON, "no-arrow");
+        ToggleGroup orders = new ToggleGroup();
+        for (SortOrder order : SortOrder.values()) {
+            RadioMenuItem item = new RadioMenuItem(order.title());
+            item.setToggleGroup(orders);
+            item.setSelected(order == model.sortOrder().get());
+            item.setOnAction(event -> model.sortOrder().set(order));
+            item.setUserData(order);
+            if (order == SortOrder.NEWEST_FIRST) {
+                sort.getItems().add(new SeparatorMenuItem());
+            }
+            sort.getItems().add(item);
+        }
+        CheckMenuItem follow = new CheckMenuItem("Follow new entries");
+        follow.selectedProperty().bindBidirectional(model.followLatest());
+        follow.disableProperty().bind(model.sortOrder().isNotEqualTo(SortOrder.LIVE));
+        sort.getItems().addAll(new SeparatorMenuItem(), follow);
+        model.sortOrder().addListener((obs, old, now) -> orders.getToggles().forEach(toggle ->
+                toggle.setSelected(toggle.getUserData() == now)));
+        Runnable show = () -> {
+            SortOrder order = model.sortOrder().get();
+            boolean following = order == SortOrder.LIVE && model.followLatest().get();
+            sort.setGraphic(new FontIcon(order == SortOrder.LIVE
+                    ? (following ? Feather.CHEVRONS_DOWN : Feather.LIST) : Feather.BAR_CHART_2));
+            sort.pseudoClassStateChanged(javafx.css.PseudoClass.getPseudoClass("following"), following);
+            sort.setTooltip(new Tooltip("Order: " + order.title() + " · " + order.description()
+                    + (order == SortOrder.LIVE ? (following ? " (following)" : " (not following)") : "")));
+        };
+        model.sortOrder().addListener((obs, old, now) -> show.run());
+        model.followLatest().addListener((obs, old, now) -> show.run());
+        show.run();
+        return sort;
+    }
+
     private Node listPane() {
-        list.setItems(model.visibleEntries());
+        list.setItems(model.displayedEntries());
         list.getStyleClass().addAll("traffic-list", Styles.STRIPED);
         list.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
         list.setMinHeight(80);
@@ -384,17 +427,25 @@ public final class TrafficPanelView extends VBox {
                 event.consume();
             }
         });
-        model.visibleEntries().addListener((ListChangeListener<TrafficEntry>) change -> {
-            if (model.followLatest().get() && !model.visibleEntries().isEmpty()) {
-                list.scrollTo(model.visibleEntries().size() - 1);
+        model.displayedEntries().addListener((ListChangeListener<TrafficEntry>) change -> followIfLive());
+        model.followLatest().addListener((obs, old, now) -> followIfLive());
+        model.sortOrder().addListener((obs, old, now) -> {
+            if (now != SortOrder.LIVE && !model.displayedEntries().isEmpty()) {
+                list.scrollTo(0);
             }
         });
-        model.followLatest().addListener((obs, old, now) -> {
-            if (now && !model.visibleEntries().isEmpty()) {
-                list.scrollTo(model.visibleEntries().size() - 1);
-            }
-        });
-        return list;
+        HoldQueueView holdQueue = new HoldQueueView(model, renderer, model::endpointOfDestination);
+        VBox.setVgrow(list, Priority.ALWAYS);
+        VBox pane = new VBox(6, holdQueue, list);
+        pane.setMinHeight(80);
+        return pane;
+    }
+
+    private void followIfLive() {
+        if (model.sortOrder().get() == SortOrder.LIVE && model.followLatest().get()
+                && !model.displayedEntries().isEmpty()) {
+            list.scrollTo(model.displayedEntries().size() - 1);
+        }
     }
 
     private ContextMenu contextMenu() {
@@ -416,8 +467,12 @@ public final class TrafficPanelView extends VBox {
                 .ifPresent(model::focusConnection));
         MenuItem disconnect = new MenuItem("Disconnect", new FontIcon(Feather.SLASH));
         disconnect.setOnAction(event -> model.disconnectSelected());
+        MenuItem useAsTarget = new MenuItem("Send to this connection", new FontIcon(Feather.SEND));
+        useAsTarget.setOnAction(event -> selectedEntry().flatMap(e -> e.event().connectionId())
+                .flatMap(id -> main.activeConnections().stream().filter(c -> c.id().equals(id)).findFirst())
+                .ifPresent(model.target()::set));
         ContextMenu menu = new ContextMenu(copyEntry, copyNumbers, copyText, copyRaw, saveRaw,
-                new SeparatorMenuItem(), onlyConnection, disconnect);
+                new SeparatorMenuItem(), onlyConnection, useAsTarget, disconnect);
         menu.setOnShowing(event -> {
             boolean data = selectedEntry().map(e -> e.event() instanceof
                     io.github.mralireza82.wirelens.domain.traffic.TrafficEvent.DataTransferred).orElse(false);
@@ -428,6 +483,7 @@ public final class TrafficPanelView extends VBox {
             boolean open = selectedEntry().flatMap(e -> e.event().connectionId())
                     .filter(model.openConnections()::contains).isPresent();
             disconnect.setDisable(!open);
+            useAsTarget.setDisable(!open);
             onlyConnection.setDisable(selectedEntry().flatMap(e -> e.event().connectionId()).isEmpty());
         });
         return menu;
@@ -464,13 +520,20 @@ public final class TrafficPanelView extends VBox {
 
     private Node composer() {
         String peer = EntryPresenter.peerName(model.side());
-        Label target = new Label();
-        target.getStyleClass().addAll("hint", "composer-target");
-        target.setGraphic(new FontIcon(Feather.SEND));
-        target.textProperty().bind(Bindings.createStringBinding(() -> model.composerTarget().get()
-                        .map(id -> "Send to the " + peer + " of " + id)
-                        .orElse("Select an entry of an open connection to send bytes to its " + peer),
+        Label caption = new Label("Send to the " + peer + " of", new FontIcon(Feather.SEND));
+        caption.getStyleClass().addAll("hint", "composer-target");
+        caption.setMinWidth(Label.USE_PREF_SIZE);
+        Button picker = ConnectionPicker.targetButton(main.activeConnections(), model.target(), peer, main.clock());
+        HBox.setHgrow(picker, Priority.ALWAYS);
+        Button disconnect = new Button("Disconnect", new FontIcon(Feather.SLASH));
+        disconnect.getStyleClass().addAll(Styles.SMALL, Styles.DANGER, Styles.FLAT);
+        disconnect.setMinWidth(Button.USE_PREF_SIZE);
+        disconnect.setTooltip(new Tooltip("Close this connection (both the client and the destination leg)"));
+        disconnect.disableProperty().bind(Bindings.createBooleanBinding(() -> model.composerTarget().get().isEmpty(),
                 model.composerTarget()));
+        disconnect.setOnAction(event -> model.disconnectTarget());
+        HBox target = new HBox(6, caption, picker, disconnect);
+        target.setAlignment(Pos.CENTER_LEFT);
 
         TextField input = new TextField();
         input.getStyleClass().add("mono");

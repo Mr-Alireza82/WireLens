@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="256" height="256" role="img" aria-label="WireLens logo">
+  <defs>
+    <linearGradient id="wl" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2f81f7"/>
+      <stop offset="1" stop-color="#a371f7"/>
+    </linearGradient>
+  </defs>
+  <rect width="100" height="100" rx="22" fill="url(#wl)"/>
+  <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 44H21M67 44H91" stroke-width="5"/>
+    <polyline points="21,44 29,44 29,35 37,35 37,53 44,53 44,35 52,35 52,53 59,53 59,44 67,44" stroke-width="4.5"/>
+    <circle cx="44" cy="44" r="24" stroke-width="7.5"/>
+    <path d="M62 62L80 80" stroke-width="11"/>
+  </g>
+</svg>

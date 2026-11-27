@@ -33,7 +33,9 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Executor;
 
@@ -52,6 +54,9 @@ public final class MainViewModel {
     private final Notifier notifier;
 
     private final ObservableSet<ConnectionId> openConnections = FXCollections.observableSet();
+    /** Open connections in id order, with their full route, for the header list and the target pickers. */
+    private final ObservableList<ConnectionSummary> activeConnections = FXCollections.observableArrayList();
+    private final Map<ConnectionId, ConnectionSummary> connectionsById = new HashMap<>();
     private final TrafficPanelViewModel source;
     private final TrafficPanelViewModel destination;
     private final ObjectProperty<ProxyStatus> status;
@@ -76,15 +81,21 @@ public final class MainViewModel {
 
         source = new TrafficPanelViewModel(Side.SOURCE,
                 new EndpointInput(saved.listenAddress(), saved.listenPort()), saved.sourceView(),
-                saved.historyLimit(), PANEL_BYTE_LIMIT, dependencies.connections(), openConnections, background, ui, notifier);
+                saved.historyLimit(), PANEL_BYTE_LIMIT, dependencies.connections(), dependencies.hold(), openConnections,
+                background, ui, notifier);
         destination = new TrafficPanelViewModel(Side.DESTINATION,
                 new EndpointInput(saved.destinationAddress(), saved.destinationPort()), saved.destinationView(),
-                saved.historyLimit(), PANEL_BYTE_LIMIT, dependencies.connections(), openConnections, background, ui, notifier);
+                saved.historyLimit(), PANEL_BYTE_LIMIT, dependencies.connections(), dependencies.hold(), openConnections,
+                background, ui, notifier);
         darkTheme = new SimpleBooleanProperty(saved.darkTheme());
+        source.defaultCopyTarget(() -> destination.endpoint().endpoint());
+        destination.defaultCopyTarget(() -> destination.endpoint().endpoint());
 
         status = new SimpleObjectProperty<>(dependencies.proxy().status());
         statistics = new SimpleObjectProperty<>(dependencies.statistics().snapshot());
         dependencies.proxy().onStatusChanged(newStatus -> ui.execute(() -> onStatus(newStatus)));
+        dependencies.hold().onChange(() -> ui.execute(this::showHold));
+        showHold();
 
         running = Bindings.createBooleanBinding(() -> status.get().state() == ProxyState.RUNNING, status);
         canStart = Bindings.createBooleanBinding(() -> status.get().state().canStart(), status)
@@ -98,22 +109,76 @@ public final class MainViewModel {
     /** Feeds a batch of events (from the FX bridge) into both panels. */
     public void accept(List<TrafficEvent> batch) {
         for (TrafficEvent event : batch) {
-            if (event.side() != Side.SOURCE) {
-                continue;
-            }
             if (event instanceof TrafficEvent.ConnectionOpened opened) {
-                openConnections.add(opened.link().id());
-            } else if (event instanceof TrafficEvent.ConnectionClosed closed) {
-                openConnections.remove(closed.link().id());
+                opened(opened);
+            } else if (event instanceof TrafficEvent.ConnectionClosed closed && closed.side() == Side.SOURCE) {
+                closed(closed.link().id());
             }
         }
         source.accept(batch);
         destination.accept(batch);
     }
 
+    private void opened(TrafficEvent.ConnectionOpened opened) {
+        ConnectionId id = opened.link().id();
+        if (opened.side() == Side.SOURCE) {
+            ConnectionSummary summary = new ConnectionSummary(id, opened.link().remote(), opened.link().local(),
+                    Optional.empty(), opened.timestamp(), true);
+            connectionsById.put(id, summary);
+            activeConnections.add(summary);
+            openConnections.add(id);
+            for (TrafficPanelViewModel panel : List.of(source, destination)) {
+                if (panel.target().get() == null) {
+                    panel.target().set(summary); // first connection: nothing to choose from yet
+                }
+            }
+        } else {
+            ConnectionSummary known = connectionsById.get(id);
+            if (known != null) {
+                replace(known, known.withDestination(opened.link().remote()));
+            }
+        }
+    }
+
+    private void closed(ConnectionId id) {
+        openConnections.remove(id);
+        ConnectionSummary known = connectionsById.remove(id);
+        if (known != null) {
+            activeConnections.remove(known);
+            ConnectionSummary gone = known.closed();
+            for (TrafficPanelViewModel panel : List.of(source, destination)) {
+                if (panel.target().get() != null && panel.target().get().id().equals(id)) {
+                    panel.target().set(gone); // stays visible, greyed, until the user picks another
+                }
+            }
+        }
+    }
+
+    private void replace(ConnectionSummary old, ConnectionSummary updated) {
+        connectionsById.put(updated.id(), updated);
+        int index = activeConnections.indexOf(old);
+        if (index >= 0) {
+            activeConnections.set(index, updated);
+        }
+        for (TrafficPanelViewModel panel : List.of(source, destination)) {
+            if (old.equals(panel.target().get())) {
+                panel.target().set(updated);
+            }
+        }
+    }
+
+    private void showHold() {
+        List<io.github.mralireza82.wirelens.domain.intercept.HeldMessage> held = dependencies.hold().held();
+        source.showHold(dependencies.hold().isHolding(Side.SOURCE), held);
+        destination.showHold(dependencies.hold().isHolding(Side.DESTINATION), held);
+    }
+
     private void onStatus(ProxyStatus newStatus) {
         status.set(newStatus);
         if (!newStatus.state().isActive()) {
+            for (ConnectionId id : List.copyOf(openConnections)) {
+                closed(id);
+            }
             openConnections.clear();
         }
         if (newStatus.state() == ProxyState.FAILED) {
@@ -310,6 +375,14 @@ public final class MainViewModel {
 
     public ObservableSet<ConnectionId> openConnections() {
         return openConnections;
+    }
+
+    public ObservableList<ConnectionSummary> activeConnections() {
+        return activeConnections;
+    }
+
+    public java.time.Clock clock() {
+        return dependencies.clock();
     }
 
     public List<CaptureExporter> exporters() {
