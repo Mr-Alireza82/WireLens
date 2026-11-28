@@ -34,6 +34,8 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+    // The SQLite driver loads a native library; allow it up front (JDK 24+ warns otherwise, JDK 21 accepts it).
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
     // A test that blocks (e.g. on a socket) fails with its name after 60 s instead of hanging the build;
     // SEPARATE_THREAD lets JUnit abandon a thread stuck in non-interruptible I/O.
     systemProperty("junit.jupiter.execution.timeout.default", "60 s")

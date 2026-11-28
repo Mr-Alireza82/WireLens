@@ -8,6 +8,8 @@ import io.github.mralireza82.wirelens.adapter.gui.javafx.util.Formats;
 import io.github.mralireza82.wirelens.adapter.gui.javafx.viewmodel.ComposerMode;
 import io.github.mralireza82.wirelens.adapter.gui.javafx.viewmodel.EndpointInput;
 import io.github.mralireza82.wirelens.adapter.gui.javafx.viewmodel.MainViewModel;
+import io.github.mralireza82.wirelens.presentation.layout.Arrangement;
+import io.github.mralireza82.wirelens.presentation.layout.Split;
 import io.github.mralireza82.wirelens.adapter.gui.javafx.viewmodel.SortOrder;
 import io.github.mralireza82.wirelens.adapter.gui.javafx.viewmodel.TrafficEntry;
 import io.github.mralireza82.wirelens.adapter.gui.javafx.viewmodel.TrafficPanelViewModel;
@@ -46,6 +48,7 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.MouseEvent;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -81,15 +84,20 @@ public final class TrafficPanelView extends VBox {
     private final MainViewModel main;
     private final PayloadRenderer renderer = new PayloadRenderer();
     private final ListView<TrafficEntry> list = new ListView<>();
+    private final SplitPane body;
+    private final Node listPane;
+    private final Node bottomPane;
 
     public TrafficPanelView(TrafficPanelViewModel model, MainViewModel main) {
         this.model = model;
         this.main = main;
         boolean source = model.side() == Side.SOURCE;
         getStyleClass().addAll("panel", source ? "source" : "destination");
-        setMinWidth(320);
+        setMinWidth(0);
 
-        SplitPane body = new SplitPane(listPane(), bottomPane());
+        listPane = listPane();
+        bottomPane = bottomPane();
+        body = new SplitPane(listPane, bottomPane);
         body.setOrientation(Orientation.VERTICAL);
         body.setDividerPositions(0.62);
         VBox.setVgrow(body, Priority.ALWAYS);
@@ -275,7 +283,8 @@ public final class TrafficPanelView extends VBox {
             model.settings().set(model.settings().get().withSeparator(value));
         });
 
-        HBox bar = new HBox(8, fieldLabel("Encoding"), encoding, fieldLabel("Base"), baseButtons,
+        // A FlowPane wraps onto a second line when the panel is narrow instead of cutting controls off.
+        FlowPane bar = new FlowPane(8, 6, fieldLabel("Encoding"), encoding, fieldLabel("Base"), baseButtons,
                 fieldLabel("Separator"), separator);
         bar.setAlignment(Pos.CENTER_LEFT);
         return bar;
@@ -295,7 +304,7 @@ public final class TrafficPanelView extends VBox {
         clearSearch.setOnAction(event -> search.clear());
         clearSearch.visibleProperty().bind(search.textProperty().isNotEmpty());
         search.setRight(clearSearch);
-        HBox.setHgrow(search, Priority.ALWAYS);
+        search.setPrefColumnCount(16);
         search.setMinWidth(140);
         PauseTransition debounce = new PauseTransition(Duration.millis(220));
         debounce.setOnFinished(event -> model.query().set(search.getText()));
@@ -363,7 +372,7 @@ public final class TrafficPanelView extends VBox {
             export.getItems().add(item);
         }
 
-        HBox bar = new HBox(6, search, kinds, sort, pause, hold, clear, export);
+        FlowPane bar = new FlowPane(6, 6, search, kinds, sort, pause, hold, clear, export);
         bar.setAlignment(Pos.CENTER_LEFT);
         return bar;
     }
@@ -659,4 +668,30 @@ public final class TrafficPanelView extends VBox {
     public void focusList() {
         list.requestFocus();
     }
+
+    /**
+     * Arranges the list and the inspector as the presentation layer decides: stacked (inspector below) or side by
+     * side (inspector to the right), divided by the given proportion. Minimum sizes keep both usable.
+     */
+    void applyLayout(Arrangement arrangement, Split split) {
+        boolean beside = arrangement == Arrangement.SIDE_BY_SIDE;
+        body.setOrientation(beside ? Orientation.HORIZONTAL : Orientation.VERTICAL);
+        for (Node pane : new Node[] {listPane, bottomPane}) {
+            if (pane instanceof Region region) {
+                region.setMinWidth(0);
+                region.setMinHeight(0);
+            }
+        }
+        Region first = (Region) listPane;
+        Region second = (Region) bottomPane;
+        if (beside) {
+            first.setMinWidth(split.firstMinDp());
+            second.setMinWidth(split.secondMinDp());
+        } else {
+            first.setMinHeight(split.firstMinDp());
+            second.setMinHeight(split.secondMinDp());
+        }
+        body.setDividerPositions(split.firstFraction());
+    }
+
 }

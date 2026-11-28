@@ -81,23 +81,23 @@ git clone https://github.com/Mr-Alireza82/WireLens.git
 cd WireLens
 
 # Try it with built-in simulated payment traffic (a host simulator and three clients):
-./gradlew :bootstrap:run --args="--demo"
+./gradlew :apps:windows:run --args="--demo"
 
 # Or start it normally:
-./gradlew :bootstrap:run
+./gradlew :apps:windows:run
 ```
 
-On Windows, use `gradlew.bat` in place of `./gradlew`.
+On Windows, use `gradlew.bat` in place of `./gradlew`. The entry point is
+[`apps/windows/.../Main.java`](apps/windows/src/main/java/io/github/mralireza82/wirelens/app/windows/Main.java).
 
 ### Build a runnable distribution
 
 ```bash
-./gradlew :bootstrap:installDist
-bootstrap/build/install/wirelens/bin/wirelens          # Linux / macOS
-bootstrap\build\install\wirelens\bin\wirelens.bat      # Windows
+./gradlew :apps:windows:installDist
+apps\windows\build\install\wirelens\bin\wirelens.bat
 ```
 
-`./gradlew :bootstrap:distZip` creates a zip of the same files that you can share.
+`./gradlew :apps:windows:distZip` creates a zip of the same files that you can share.
 
 ## Using WireLens
 
@@ -181,38 +181,65 @@ filter button limits the list to chosen event kinds.
 ### Files and settings
 
 * Captures: `*.jsonl`. There is one event per line and payloads are stored as hex. The format is
-  documented in [`JsonLinesCapture`](adapter-storage/src/main/java/io/github/mralireza82/wirelens/adapter/storage/JsonLinesCapture.java)
+  documented in [`JsonLinesCapture`](adapters/storage/file/src/main/java/io/github/mralireza82/wirelens/adapter/storage/file/JsonLinesCapture.java)
   and is easy to process with `jq`.
 * Logs: `~/.wirelens/logs/wirelens-0.log` (rotating).
-* Settings (addresses, selectors, theme) are stored with Java Preferences.
+* Settings (addresses, selectors, theme): an SQLite database, `~/.wirelens/wirelens.db`.
 
 ## Architecture
 
-WireLens follows **hexagonal architecture (ports and adapters)** with a DDD-style domain. Each layer is
-its own Gradle module, so the dependency rule is checked by the compiler, not just by convention.
+WireLens uses **DDD with hexagonal (ports and adapters) architecture**. Every folder below is its own Gradle
+module, and [ArchUnit tests](quality/architecture-tests) fail the build if a dependency points the wrong way.
+
+```
+shared/
+  kernel/              bytes (Payload), endpoints, ports, ids: used by every context
+  design-tokens/       colours (dark + light), type scale, spacing, radii: one source for every GUI
+contexts/              bounded contexts: the features (domain + application)
+  relay/               proxy, connections, hold mode
+  inspection/          rendering, filters, capture ports, statistics
+presentation/          platform-neutral: no GUI toolkit allowed
+  layout/              breakpoints (5 width, 3 height size classes), arrangements, splits
+  screens/traffic/     the traffic screen's layout rules per size class, its remembered settings
+adapters/              grouped by technology; one technology may serve several platforms
+  connection/tcp/      TCP relay engine (Windows, Linux, Android)
+  connection/udp/      UDP relay (empty for now)
+  gui/javafx/          JavaFX UI (Windows, Linux)
+  gui/compose/         Jetpack Compose UI (Android, not started)
+  storage/file/        JSON Lines captures, text report, raw .bin files
+  storage/sqlite/      settings in SQLite (desktop)
+  storage/room/        Room (Android, not started)
+di/
+  dagger/              desktop wiring: picks TCP, SQLite, files and JavaFX
+  hilt/                Android wiring (not started)
+apps/                  one composition root per platform
+  windows/             Main.java, demo mode, packaging
+  linux/               (empty for now)
+  android/             (not started)
+quality/
+  architecture-tests/  ArchUnit rules
+```
 
 ```mermaid
 flowchart LR
-    subgraph core [Core]
-        domain["domain<br/>value objects, events"]
-        application["application<br/>use cases, ports, rendering"]
-        application --> domain
-    end
-    tcp["adapter-tcp<br/>relay engine"] --> application
-    storage["adapter-storage<br/>captures, preferences"] --> application
-    ui["adapter-javafx<br/>MVVM user interface"] --> application
-    bootstrap["bootstrap<br/>composition root"] --> tcp & storage & ui
-    application --> bc[("base-conversion<br/>via JitPack")]
+    app["apps/windows<br/>Main"] --> di["di/dagger"]
+    di --> tcp["adapters/connection/tcp"] & file["adapters/storage/file"] & sqlite["adapters/storage/sqlite"] & fx["adapters/gui/javafx"]
+    fx --> screen["presentation/screens/traffic"] & tokens["shared/design-tokens"]
+    sqlite --> screen
+    screen --> layout["presentation/layout"] & inspection["contexts/inspection"]
+    tcp --> relay["contexts/relay"]
+    file --> inspection
+    inspection --> relay --> kernel["shared/kernel"]
 ```
 
-| Module | Responsibility |
-|---|---|
-| `domain` | `IpAddress`, `Port`, `Endpoint`, `Payload` and the sealed `TrafficEvent` hierarchy. Pure Java, with no dependencies. |
-| `application` | Use cases (`ProxyControl`, `ConnectionCommands`, `HoldCommands`), outbound ports (`RelayEngine`, `TrafficGate`, `OneShotSender`, `TrafficEventSink`, `CaptureExporter`, …), `ProxyService`, `HoldService`, statistics, filtering, and payload rendering and parsing. |
-| `adapter-tcp` | `TcpRelayEngine`: blocking sockets, two pumps per connection (platform threads; virtual threads opt-in), half-close aware. Each chunk passes the `TrafficGate` before it is forwarded. `TcpOneShotSender` sends copies. |
-| `adapter-storage` | JSON Lines capture (export and import), the text report, raw `.bin` files, and Preferences-based settings. |
-| `adapter-javafx` | The UI as MVVM: view models are plain classes, testable without a screen, and views only bind. |
-| `bootstrap` | `main()`: creates every object and wires the adapters to the ports (manual dependency injection). It also contains demo mode. |
+**Who decides how a screen looks?** Not the domain, and not each GUI on its own. `presentation/layout`
+defines the size classes (Material 3 breakpoints in dp: COMPACT < 600, MEDIUM < 840, EXPANDED < 1200,
+LARGE < 1600, EXTRA_LARGE; heights COMPACT < 480, MEDIUM < 900, EXPANDED). `TrafficScreenLayout` says what
+the traffic screen does in each one: panels side by side, stacked, or one at a time in tabs; inspector below
+or beside the list; full or condensed header. Proportions are fractions with minimums, never fixed sizes, so
+the screen stretches smoothly inside a size class. The JavaFX adapter only draws that, and re-arranges live
+while the window is resized; a Compose adapter will draw the same rules. Colours come from
+`shared/design-tokens`, turned into JavaFX CSS by `TokenStylesheet`.
 
 See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the event flow, the threading model, memory
 limits, the design patterns used, and how to extend WireLens. See **[docs/ARTICLE.md](docs/ARTICLE.md)**
@@ -262,7 +289,7 @@ There are 158 tests across all modules:
 * **UI view models** (no screen needed): history and byte limits, pause, filters, endpoint validation,
   the send box, the start/stop flow, and export ordering.
 
-**Load test:** `./gradlew :bootstrap:run --args="--stress"` adds four clients that send as fast as they
+**Load test:** `./gradlew :apps:windows:run --args="--stress"` adds four clients that send as fast as they
 can. In a 45-second run on a 4-core container with software rendering, WireLens relayed about 350 MB/s
 (3.5 million data events). Memory stayed bounded and the UI frame gaps stayed at the same level as when
 idle.

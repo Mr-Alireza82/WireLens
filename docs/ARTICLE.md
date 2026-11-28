@@ -53,6 +53,9 @@ I come from Android and payment systems, where code lives for a decade and the f
 changing. Hexagonal architecture (ports and adapters) handles that well: the core states what it needs as
 interfaces, and the edges plug in.
 
+> This was the first layout. WireLens has since moved to shared / contexts / presentation / adapters /
+> di / apps modules so it can grow to Linux and Android; see [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ```
 domain           value objects + the sealed TrafficEvent hierarchy (no dependencies)
 application      use cases, ports, ProxyService, statistics, rendering, filtering

@@ -16,6 +16,7 @@ import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.Tooltip;
 import javafx.scene.image.ImageView;
+import io.github.mralireza82.wirelens.presentation.traffic.layout.TrafficScreenLayout;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
@@ -33,11 +34,14 @@ final class HeaderView extends VBox {
     private final Label statusPill = new Label();
     private final Label route = new Label();
     private final Button startStop = new Button();
+    private final Label subtitle = new Label("TCP relay & traffic inspector");
+    private final HBox tiles;
 
     HeaderView(MainViewModel model, Runnable openCapture, Runnable exportAll, Runnable showAbout) {
         this.model = model;
         getStyleClass().add("header");
-        getChildren().addAll(titleRow(openCapture, exportAll, showAbout), tilesRow());
+        tiles = tilesRow();
+        getChildren().addAll(titleRow(openCapture, exportAll, showAbout), tiles);
         model.status().addListener((obs, old, now) -> showStatus(now));
         showStatus(model.status().get());
     }
@@ -50,7 +54,6 @@ final class HeaderView extends VBox {
         logo.getStyleClass().add("logo");
         Label title = new Label("WireLens");
         title.getStyleClass().add("app-title");
-        Label subtitle = new Label("TCP relay & traffic inspector");
         subtitle.getStyleClass().add("app-subtitle");
         VBox identity = new VBox(-2, title, subtitle);
 
@@ -214,4 +217,14 @@ final class HeaderView extends VBox {
         icon.getStyleClass().add("tile-icon");
         return icon;
     }
+
+    /** FULL shows the route and the statistics tiles; CONDENSED keeps only the title row essentials. */
+    void applyDensity(TrafficScreenLayout.HeaderDensity density) {
+        boolean full = density == TrafficScreenLayout.HeaderDensity.FULL;
+        for (javafx.scene.Node node : new javafx.scene.Node[] {tiles, route, subtitle}) {
+            node.setVisible(full);
+            node.setManaged(full);
+        }
+    }
+
 }

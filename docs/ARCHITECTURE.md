@@ -3,35 +3,90 @@
 This document explains how WireLens is organised, how data flows from a socket to the screen, how threads
 cooperate, and how to extend the application.
 
-## 1. Layers and the dependency rule
+## 1. Modules and the dependency rule
 
-WireLens is a **hexagonal** application (also called *ports and adapters*). The core does not know which
-networking library, file format or UI toolkit is used. It defines **ports** (interfaces), and
-**adapters** implement them.
+WireLens is a **hexagonal** application (also called *ports and adapters*) organised with DDD. The core
+does not know which networking library, file format, database or UI toolkit is used. It defines **ports**
+(interfaces), and **adapters** implement them. Every box is a Gradle module, and
+`quality/architecture-tests` (ArchUnit) checks the rules below on every build.
 
 ```mermaid
 flowchart TB
-    subgraph Driving side
-        ui[adapter-javafx<br/>JavaFX MVVM]
+    subgraph Apps["apps (one per platform)"]
+        win[apps/windows<br/>Main]
     end
-    subgraph Core
-        app[application<br/>use cases · ports · services]
-        dom[domain<br/>model]
-        app --> dom
+    subgraph DI["di"]
+        dagger[di/dagger<br/>desktop wiring]
     end
-    subgraph Driven side
-        tcp[adapter-tcp<br/>TcpRelayEngine]
-        sto[adapter-storage<br/>JSON Lines · Preferences]
+    subgraph Adapters["adapters (by technology)"]
+        fx[gui/javafx<br/>MVVM]
+        tcp[connection/tcp<br/>TcpRelayEngine]
+        file[storage/file<br/>JSON Lines · report · .bin]
+        sql[storage/sqlite<br/>settings]
     end
-    ui -- "ProxyControl, ConnectionCommands (inbound ports)" --> app
-    tcp -. "implements RelayEngine, publishes to TrafficEventSink" .-> app
-    sto -. "implements CaptureExporter/Importer, SettingsRepository" .-> app
-    boot[bootstrap<br/>composition root] --> ui & tcp & sto
+    subgraph Presentation["presentation (plain Java)"]
+        screen[screens/traffic<br/>layout spec · settings]
+        layout[layout<br/>size classes · splits]
+    end
+    subgraph Contexts["contexts (bounded contexts)"]
+        relay[relay<br/>domain + application]
+        insp[inspection<br/>rendering · filters · statistics]
+    end
+    subgraph Shared
+        kernel[kernel]
+        tokens[design-tokens]
+    end
+    win --> dagger --> fx & tcp & file & sql
+    fx --> screen & tokens
+    sql --> screen
+    screen --> layout & insp
+    tcp --> relay
+    file --> insp
+    insp --> relay --> kernel
 ```
 
-Each box is a **Gradle module**, so the compiler enforces the rule. `domain` has no dependencies, so it
-physically cannot import a socket or a JavaFX class. `application` sees only `domain` and the
-base-conversion library. Adapters never see each other. Only `bootstrap` knows every module.
+Rules (each one is an ArchUnit test):
+
+* `shared/kernel` and `shared/design-tokens` depend only on the JDK.
+* `contexts/relay` knows only the kernel; inside it, `domain` never imports `application`.
+* `contexts/inspection` is downstream of relay (it reads the `TrafficEvent`s relay publishes) and knows
+  nothing of presentation or adapters.
+* `presentation` is plain Java: no JavaFX, Android, SQL or sockets. `presentation/layout` depends on nothing.
+* The core (kernel, contexts, presentation, tokens) imports no framework: no JavaFX, Dagger, `javax.inject`
+  or JDBC. Core classes carry no injection annotations; `di/dagger` creates them with plain constructors.
+* Adapters never depend on each other. Only `di` and `apps` know concrete adapters, and apps get their
+  objects from `di` instead of calling adapter constructors.
+
+### Platforms
+
+A technology is not a platform: JavaFX runs on Windows and Linux, SQLite on all three platforms, and the
+TCP relay (`java.net`) on Windows, Linux and Android. So adapters are grouped by technology and reused, and
+each platform is a thin composition root: `apps/<platform>` holds `Main`, platform-only code and packaging,
+and picks its DI module (`di/dagger` for desktop, `di/hilt` for Android). The Android modules
+(`adapters/gui/compose`, `adapters/storage/room`, `di/hilt`, `apps/android`) need the Android Gradle plugin,
+so they are documented folders and are not in `settings.gradle.kts` yet.
+
+### Screens and size classes
+
+How a screen looks at a given window size is a **presentation** decision, made once for every GUI:
+
+* `presentation/layout` defines the vocabulary: `WidthClass` (COMPACT < 600 dp, MEDIUM < 840, EXPANDED
+  < 1200, LARGE < 1600, EXTRA_LARGE) and `HeightClass` (COMPACT < 480, MEDIUM < 900, EXPANDED), the
+  Material 3 window size classes; `Arrangement` (side by side, stacked, one at a time); and `Split` (a
+  fraction plus minimums in dp).
+* `presentation/screens/traffic` has `TrafficScreenLayout.forSize(...)`: the rules for the traffic screen,
+  with unit tests for every size class.
+* A GUI adapter only draws the result. `MainView` (JavaFX) listens to the window size, and when the size
+  class changes it moves the same panel objects between a `SplitPane` (horizontal or vertical) and a
+  `TabPane`, so nothing is re-created and no state is lost. Within a class everything stretches: splits use
+  fractions, toolbars wrap (`FlowPane`), and there are no fixed sizes.
+* Sizes are density-independent: on Android `dp = px / density` (a 720 px wide POS screen at density 2 is
+  360 dp, so COMPACT); JavaFX scene coordinates are already logical pixels.
+
+Colours are tokens too: `shared/design-tokens` holds the dark and light palettes as plain numbers (`Rgba`).
+The JavaFX adapter turns them into the CSS variables that the AtlantaFX theme and `wirelens.css` use
+(`TokenStylesheet`); a test fails if `wirelens.css` hard-codes a colour. A Compose adapter will map the same
+palette to its own colour scheme.
 
 ## 2. The domain model
 
@@ -60,7 +115,7 @@ numbers, hex dump, raw hex) is a pure function of `Payload` plus the view's `Ren
 | `TrafficEventSink` | outbound (Observer) | `TrafficStatistics`, `FxEventBridge`, composed by `CompositeEventSink` |
 | `CaptureExporter` / `CaptureImporter` | outbound | `JsonLinesCapture`, `TextReportExporter` |
 | `PayloadFileWriter` | outbound | `RawPayloadWriter` |
-| `SettingsRepository` | outbound | `PreferencesSettingsRepository` (or an in-memory one in demo mode) |
+| `SettingsRepository` | outbound | `SqliteSettingsRepository` (or an in-memory one in demo mode) |
 
 ## 4. From socket to screen
 
@@ -180,12 +235,12 @@ data events per second, a flat heap, and worst frame gaps similar to an idle win
 | Specification | `TrafficFilter` (a `Predicate<TrafficEvent>`) |
 | Flyweight | `ByteDigits` lookup tables shared by every render |
 | Producer/consumer with batching | `FxEventBridge` |
-| MVVM | `adapter-javafx` |
-| Composition root / manual DI | `bootstrap.WireLens` |
+| MVVM | `adapters/gui/javafx` |
+| Composition root / dependency injection | `di/dagger` (`DesktopModule`, `DesktopComponent`), `apps/windows` `Main` |
 
 ## 9. Use of the base-conversion library
 
-`application` depends on `com.github.Mr-Alireza82:Base-Conversion` (JitPack):
+`contexts/inspection` and `adapters/storage/file` depend on `com.github.Mr-Alireza82:Base-Conversion` (JitPack):
 
 * `BaseConversion.toDigits` builds the per-byte digit tables for every radix, padded to a fixed width:
   8 digits for binary, 3 for octal and decimal, 2 for hex.
@@ -194,7 +249,7 @@ data events per second, a flat heap, and worst frame gaps similar to an idle win
 * `ByteEncoding.fromHex` / `fromBits` and `BaseConversion.toNumber` parse what the user types in the send
   box.
 
-The library's `Base` type stays inside `application`, behind WireLens' own `Radix` enum, so the UI never
+The library's `Base` type stays inside `contexts/inspection`, behind WireLens' own `Radix` enum, so the UI never
 depends on it directly.
 
 ## 10. Extending WireLens
@@ -202,7 +257,9 @@ depends on it directly.
 | Goal | What to add |
 |---|---|
 | A new character encoding | A constant in `TextEncoding`. It appears in the menus automatically. |
-| A new export format | A class implementing `CaptureExporter` in `adapter-storage`, registered in `bootstrap.WireLens`. |
-| UDP, SOCKS5 or TLS relaying | A new adapter implementing `RelayEngine` that publishes the same `TrafficEvent`s. The UI needs no change. |
-| Protocol decoding (e.g. ISO 8583 fields) | A new rendering strategy in `application.render` plus an inspector tab. |
-| A different UI (CLI, web) | A new driving adapter that uses `ProxyControl` and subscribes to `CompositeEventSink`. |
+| A new export format | A class implementing `CaptureExporter` in `adapters/storage/file`, provided in `di/dagger` `DesktopModule`. |
+| UDP, SOCKS5 or TLS relaying | An adapter (e.g. `adapters/connection/udp`) implementing `RelayEngine` that publishes the same `TrafficEvent`s. The UI needs no change. |
+| Protocol decoding (e.g. ISO 8583 fields) | A new rendering strategy in `inspection.application.render` plus an inspector tab. |
+| A different UI (Compose, CLI, web) | A new driving adapter that uses `ProxyControl`, subscribes to `CompositeEventSink` and draws `TrafficScreenLayout`. |
+| A new platform | `apps/<platform>` with its `Main`, and a DI module that picks the adapters for it. |
+| A new screen | `presentation/screens/<screen>` with its layout rules per size class, then one view per GUI adapter. |

@@ -3,6 +3,7 @@ package io.github.mralireza82.wirelens.adapter.gui.javafx;
 import atlantafx.base.theme.PrimerDark;
 import atlantafx.base.theme.PrimerLight;
 import io.github.mralireza82.wirelens.adapter.gui.javafx.util.MonoFont;
+import io.github.mralireza82.wirelens.adapter.gui.javafx.util.TokenStylesheet;
 import io.github.mralireza82.wirelens.adapter.gui.javafx.view.AppIcon;
 import io.github.mralireza82.wirelens.adapter.gui.javafx.view.MainView;
 import io.github.mralireza82.wirelens.adapter.gui.javafx.view.Toasts;
@@ -20,6 +21,7 @@ import javafx.scene.layout.StackPane;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.util.Duration;
+import io.github.mralireza82.wirelens.tokens.ColorScheme;
 
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
@@ -66,8 +68,6 @@ public final class WireLensApplication extends Application {
         Toasts toasts = new Toasts(root);
         model = new MainViewModel(deps, background, Platform::runLater, toasts);
         bridge.subscribe(model::accept);
-        applyTheme(model.darkTheme().get());
-        model.darkTheme().addListener((obs, old, dark) -> applyTheme(dark));
 
         MainView view = new MainView(model, () -> stage);
         root.getChildren().add(0, view);
@@ -79,12 +79,15 @@ public final class WireLensApplication extends Application {
         scene.getStylesheets().addAll(
                 Objects.requireNonNull(WireLensApplication.class.getResource("wirelens.css")).toExternalForm(),
                 MonoFont.stylesheet());
+        applyTheme(scene, model.darkTheme().get());
+        model.darkTheme().addListener((obs, old, dark) -> applyTheme(scene, dark));
         installShortcuts(scene, view);
 
         stage.setTitle("WireLens");
         stage.getIcons().setAll(AppIcon.images());
-        stage.setMinWidth(760);
-        stage.setMinHeight(520);
+        // Small enough to reach the COMPACT layout; the presentation layer decides how it looks there.
+        stage.setMinWidth(360);
+        stage.setMinHeight(360);
         stage.setScene(scene);
         stage.show();
 
@@ -105,9 +108,13 @@ public final class WireLensApplication extends Application {
                 view::exportAll);
     }
 
-    private static void applyTheme(boolean dark) {
+    /** The AtlantaFX theme for the controls, then the design-token colours on top (one source for every GUI). */
+    private static void applyTheme(Scene scene, boolean dark) {
         Application.setUserAgentStylesheet(dark ? new PrimerDark().getUserAgentStylesheet()
                 : new PrimerLight().getUserAgentStylesheet());
+        scene.getStylesheets().removeIf(url -> url.equals(TokenStylesheet.url(ColorScheme.DARK))
+                || url.equals(TokenStylesheet.url(ColorScheme.LIGHT)));
+        scene.getStylesheets().add(0, TokenStylesheet.url(dark ? ColorScheme.DARK : ColorScheme.LIGHT));
     }
 
     @Override

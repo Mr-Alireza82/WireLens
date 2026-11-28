@@ -1,11 +1,8 @@
 /*
- * WireLens styles on top of the AtlantaFX Primer theme. Colours come from the theme's variables
- * (-color-*) so the light and dark themes both work; only the two side accents are WireLens' own.
+ * WireLens styles on top of the AtlantaFX Primer theme. Every colour is a variable (-color-*, -wl-*) generated
+ * from shared/design-tokens by TokenStylesheet, so light and dark themes and every GUI share one source.
+ * Do not hard-code colours here (a test checks it).
  */
-.root {
-    -wl-source: #2f81f7;
-    -wl-destination: #a371f7;
-}
 
 /* ------------------------------------------------------------------ header */
 .header {
