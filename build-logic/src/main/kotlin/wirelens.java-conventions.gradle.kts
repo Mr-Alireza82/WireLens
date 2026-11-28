@@ -10,6 +10,10 @@ val libs = extensions.getByType<VersionCatalogsExtension>().named("libs")
 group = "io.github.mralireza82.wirelens"
 version = "1.0.0"
 
+// Nested projects share last names (e.g. "file", "tcp"), so jars are named after the full path:
+// :adapters:storage:file -> adapters-storage-file-1.0.0.jar.
+base.archivesName = path.removePrefix(":").replace(':', '-')
+
 java {
     sourceCompatibility = JavaVersion.VERSION_21
     targetCompatibility = JavaVersion.VERSION_21
